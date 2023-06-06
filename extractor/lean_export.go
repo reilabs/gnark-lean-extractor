@@ -93,6 +93,8 @@ func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, 
 		name = "div"
 	case OpAssertEq:
 		name = "eq"
+	case OpAssertNotEq:
+		name = "ne"
 	}
 	functional := false
 	switch op {

@@ -58,6 +58,7 @@ const (
 	OpAnd
 	OpOr
 	OpAssertEq
+	OpAssertNotEq
 )
 
 func (_ OpKind) isOp() {}
@@ -210,8 +211,7 @@ func (ce *CodeExtractor) AssertIsEqual(i1, i2 frontend.Variable) {
 }
 
 func (ce *CodeExtractor) AssertIsDifferent(i1, i2 frontend.Variable) {
-	//TODO implement me
-	panic("implement me")
+	ce.AddApp(OpAssertNotEq, i1, i2)
 }
 
 func (ce *CodeExtractor) AssertIsBoolean(i1 frontend.Variable) {
