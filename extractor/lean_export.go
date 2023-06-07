@@ -80,38 +80,77 @@ func genGadgetCall(gateVar string, inAssignment []string, gateVars []string, gad
 	return fmt.Sprintf("    %s %s fun %s =>\n", name, operands, binder)
 }
 
-func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, args []Operand) string {
+func genGateString(op Op, operands []string) string {
 	name := "unknown"
 	switch op {
 	case OpAdd:
 		name = "add"
-	case OpMul:
-		name = "mul"
+	case OpMulAcc:
+		name = "mac"
+	case OpNeg:
+		name = "neg"
 	case OpSub:
 		name = "sub"
+	case OpMul:
+		name = "mul"
+	case OpDivUnchecked:
+		name = "du"
 	case OpDiv:
 		name = "div"
+	case OpInverse:
+		name = "inv"
 	case OpAssertEq:
 		name = "eq"
 	case OpAssertNotEq:
 		name = "ne"
 	}
+
+	name = fmt.Sprintf("Gates.%s", name)
+	return fmt.Sprintf("%s %s ∧", name, strings.Join(operands, " "))
+}
+
+func getGateName(gateVar string) string {
+	varName := "_ignored_"
+	if gateVar != "" {
+		varName = gateVar
+	}
+	return varName
+}
+
+func genGateBinders(gateVar string) string {
+	gateName := getGateName(gateVar)
+	return fmt.Sprintf("∃%s, %s = ", gateName, gateName)
+}
+
+func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, args []Operand) string {
+	// functional is set to true when the op returns a value
 	functional := false
 	switch op {
-	case OpAdd, OpMul, OpSub, OpDiv:
+	case OpAdd, OpMulAcc, OpNeg, OpSub, OpMul, OpDivUnchecked, OpDiv, OpInverse:
 		functional = true
 	}
-	name = fmt.Sprintf("Gates.%s", name)
-	operands := strings.Join(operandExprs(args, inAssignment, gateVars), " ")
+	
+	operands := operandExprs(args, inAssignment, gateVars)
 	if functional {
-		varName := "_ignored_"
-		if gateVar != "" {
-			varName = gateVar
+		// if an operation supports infinite length of arguments,
+		// turn it into a chain of operations
+		switch op {
+		case OpAdd, OpSub, OpMul:
+			{
+				finalStr := fmt.Sprintf("    %s%s\n", genGateBinders(gateVar), genGateString(op, operands[0:2]))
+				if len(operands) > 2 {
+					for len(operands) > 2 {
+						operands = operands[1:]
+						operands[0] = getGateName(gateVar)
+						finalStr += fmt.Sprintf("    %s%s\n", genGateBinders(gateVar), genGateString(op, operands[0:2]))
+					}
+				}
+				return finalStr
+			}
+		default: return fmt.Sprintf("    %s%s\n", genGateBinders(gateVar), genGateString(op, operands))
 		}
-		binder := fmt.Sprintf("∃%s, %s = ", varName, varName)
-		return fmt.Sprintf("    %s%s %s ∧\n", binder, name, operands)
 	} else {
-		return fmt.Sprintf("    %s %s ∧\n", name, operands)
+		return fmt.Sprintf("    %s\n", genGateString(op, operands))
 	}
 }
 
