@@ -142,7 +142,7 @@ func (ce *CodeExtractor) MulAcc(a, b, c frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) Neg(i1 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpNeg, i1, -1)
+	return ce.AddApp(OpNeg, i1)
 }
 
 func (ce *CodeExtractor) Sub(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
