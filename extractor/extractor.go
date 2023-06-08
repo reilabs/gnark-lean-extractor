@@ -45,8 +45,12 @@ type OpKind int
 
 const (
 	OpAdd OpKind = iota
-	OpMul
+	OpMulAcc
+	OpNegative
 	OpSub
+	OpMul
+	OpDiv
+	OpDivUnchecked
 	OpInverse
 	OpToBinary
 	OpFromBinary
@@ -138,14 +142,11 @@ func (ce *CodeExtractor) Add(i1, i2 frontend.Variable, in ...frontend.Variable) 
 }
 
 func (ce *CodeExtractor) MulAcc(a, b, c frontend.Variable) frontend.Variable {
-	res := ce.Mul(b, c)
-	return ce.Add(a, res)
+	return ce.AddApp(OpMulAcc, a, b, c)
 }
 
 func (ce *CodeExtractor) Neg(i1 frontend.Variable) frontend.Variable {
-	// y = i1 * (-1)
-	// gnark uses subtraction in Montgomery form
-	return ce.Mul(i1, -1)
+	return ce.AddApp(OpNegative, i1)
 }
 
 func (ce *CodeExtractor) Sub(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
@@ -157,26 +158,15 @@ func (ce *CodeExtractor) Mul(i1, i2 frontend.Variable, in ...frontend.Variable) 
 }
 
 func (ce *CodeExtractor) DivUnchecked(i1, i2 frontend.Variable) frontend.Variable {
-	// https://math.stackexchange.com/a/2594232
-	inv := ce.AddApp(OpInverse, i1)
-	res := ce.Mul(i1, inv)
-	ce.AssertIsEqual(ce.Mul(i1, inv), res)
-	return res
+	return ce.AddApp(OpDivUnchecked, i1, i2)
 }
 
 func (ce *CodeExtractor) Div(i1, i2 frontend.Variable) frontend.Variable {
-	// https://math.stackexchange.com/a/2594232
-	inv := ce.AddApp(OpInverse, i1)
-	ce.AssertIsEqual(ce.Mul(i2, inv), 1)
-	res := ce.Mul(i1, inv)
-	ce.AssertIsEqual(ce.Mul(i1, inv), res)
-	return res
+	return ce.AddApp(OpDiv, i1, i2)
 }
 
 func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
-	res := ce.AddApp(OpInverse, i1)
-	ce.AssertIsEqual(ce.Mul(i1, res), 1)
-	return res
+	return ce.AddApp(OpInverse, i1)
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {

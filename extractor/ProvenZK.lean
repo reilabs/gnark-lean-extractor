@@ -55,11 +55,19 @@ abbrev F := ZMod Order
 namespace Gates
 variable {N : Nat}
 variable [Fact (Nat.Prime N)]
+def is_bool (a : ZMod N): Prop := a = 0 ∨ a = 1 -- a*(1-a) = 0
 def add (a b : ZMod N): ZMod N := a + b
+def mac (a b c : ZMod N): ZMod N := a + (b * c)
+def neg (a : ZMod N): ZMod N := a * (-1) -- Should add check for 0?
 def sub (a b : ZMod N): ZMod N := a - b
 def mul (a b : ZMod N): ZMod N := a * b
-def inv (a : ZMod N): ZMod N := 1 / a
-def iz (a : ZMod N): ZMod N := if a == 0 then 1 else 0
+def du (a b out : ZMod N): Prop := (b ≠ 0 ∧ out = a * (1 / b)) ∨ (a = 0 ∧ b = 0 ∧ out = 0)
+def div (a b out : ZMod N): Prop := b ≠ 0 ∧ out = a * (1 / b)
+def inv (a out : ZMod N): Prop := a ≠ 0 ∧ out = 1 / a
+def xor (a b out : ZMod N): Prop := is_bool a ∧ is_bool b ∧ out = a*(1-2*b)+b
+def or (a b out : ZMod N): Prop := is_bool a ∧ is_bool b ∧ out = a+b-a*b
+def and (a b out : ZMod N): Prop := is_bool a ∧ is_bool b ∧ out = a*b
+def iz (a out: ZMod N): Prop := (a = 0 ∧ out = 1) ∨ (a != 0 ∧ out = 0)
 def eq (a b : ZMod N): Prop := a = b
 def ne (a b : ZMod N): Prop := a ≠ b
 end Gates

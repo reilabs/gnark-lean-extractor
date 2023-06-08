@@ -80,15 +80,23 @@ func genGadgetCall(gateVar string, inAssignment []string, gateVars []string, gad
 	return fmt.Sprintf("    %s %s fun %s =>\n", name, operands, binder)
 }
 
-func genGate(op Op, operands []string) string {
+func genGateOp(op Op) string {
 	name := "unknown"
 	switch op {
 	case OpAdd:
 		name = "add"
+	case OpMulAcc:
+		name = "mac"
+	case OpNegative:
+		name = "neg"
 	case OpSub:
 		name = "sub"
 	case OpMul:
 		name = "mul"
+	case OpDivUnchecked:
+		name = "du"
+	case OpDiv:
+		name = "div"
 	case OpInverse:
 		name = "inv"
 	case OpXor:
@@ -109,8 +117,7 @@ func genGate(op Op, operands []string) string {
 		name = "ne"
 	}
 
-	name = fmt.Sprintf("Gates.%s", name)
-	return fmt.Sprintf("%s %s ∧", name, strings.Join(operands, " "))
+	return fmt.Sprintf("Gates.%s", name)
 }
 
 func getGateName(gateVar string) string {
@@ -126,11 +133,26 @@ func genGateBinder(gateVar string) string {
 	return fmt.Sprintf("∃%s, %s = ", gateName, gateName)
 }
 
+func genFunctionalGate(gateVar string, op Op, operands []string) string {
+	return fmt.Sprintf("    %s%s %s ∧\n", genGateBinder(gateVar), genGateOp(op), strings.Join(operands, " "))
+}
+
+func genCallbackGate(gateVar string, op Op, operands []string) string {
+	return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", getGateName(gateVar), genGateOp(op), strings.Join(operands, " "), getGateName(gateVar))
+}
+
+func genGenericGate(op Op, operands []string) string {
+	return fmt.Sprintf("    %s %s ∧\n", genGateOp(op), strings.Join(operands, " "))
+}
+
 func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, args []Operand) string {
 	// functional is set to true when the op returns a value
 	functional := false
+	callback := false
 	switch op {
-	case OpAdd, OpSub, OpMul, OpInverse, OpIsZero, OpCmp:
+	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpIsZero:
+		callback = true
+	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul, OpCmp:
 		functional = true
 	}
 	
@@ -141,20 +163,20 @@ func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, 
 		switch op {
 		case OpAdd, OpSub, OpMul:
 			{
-				finalStr := fmt.Sprintf("    %s%s\n", genGateBinder(gateVar), genGate(op, operands[0:2]))
-				if len(operands) > 2 {
-					for len(operands) > 2 {
-						operands = operands[1:]
-						operands[0] = getGateName(gateVar)
-						finalStr += fmt.Sprintf("    %s%s\n", genGateBinder(gateVar), genGate(op, operands[0:2]))
-					}
+				finalStr := genFunctionalGate(gateVar, op, operands[0:2])
+				for len(operands) > 2 {
+					operands = operands[1:]
+					operands[0] = getGateName(gateVar)
+					finalStr += genFunctionalGate(gateVar, op, operands[0:2])
 				}
 				return finalStr
 			}
-		default: return fmt.Sprintf("    %s%s\n", genGateBinder(gateVar), genGate(op, operands))
 		}
+		return genFunctionalGate(gateVar, op, operands)
+	} else if callback {
+		return genCallbackGate(gateVar, op, operands)
 	} else {
-		return fmt.Sprintf("    %s\n", genGate(op, operands))
+		return genGenericGate(op, operands)
 	}
 }
 
