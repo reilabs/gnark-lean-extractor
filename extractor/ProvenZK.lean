@@ -56,13 +56,10 @@ namespace Gates
 variable {N : Nat}
 variable [Fact (Nat.Prime N)]
 def add (a b : ZMod N): ZMod N := a + b
-def mac (a b c : ZMod N): ZMod N := a + (b * c)
-def neg (a : ZMod N): ZMod N := -1 * a
 def sub (a b : ZMod N): ZMod N := a - b
 def mul (a b : ZMod N): ZMod N := a * b
-def du (a b : ZMod N): ZMod N := if a == 0 && b == 0 then 0 else (a / b)
-def div (a b : ZMod N): ZMod N := a / b
 def inv (a : ZMod N): ZMod N := 1 / a
+def iz (a : ZMod N): ZMod N := if a == 0 then 1 else 0
 def eq (a b : ZMod N): Prop := a = b
 def ne (a b : ZMod N): Prop := a ≠ b
 end Gates

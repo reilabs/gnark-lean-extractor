@@ -45,18 +45,18 @@ type OpKind int
 
 const (
 	OpAdd OpKind = iota
-	OpMulAcc
 	OpMul
-	OpNeg
 	OpSub
-	OpDiv
-	OpDivUnchecked
 	OpInverse
 	OpToBinary
 	OpFromBinary
 	OpXor
-	OpAnd
 	OpOr
+	OpAnd
+	OpSelect
+	OpLookup
+	OpIsZero
+	OpCmp
 	OpAssertEq
 	OpAssertNotEq
 )
@@ -138,11 +138,14 @@ func (ce *CodeExtractor) Add(i1, i2 frontend.Variable, in ...frontend.Variable) 
 }
 
 func (ce *CodeExtractor) MulAcc(a, b, c frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpMulAcc, a, b, c)
+	res := ce.Mul(b, c)
+	return ce.Add(a, res)
 }
 
 func (ce *CodeExtractor) Neg(i1 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpNeg, i1)
+	// y = i1 * (-1)
+	// gnark uses subtraction in Montgomery form
+	return ce.Mul(i1, -1)
 }
 
 func (ce *CodeExtractor) Sub(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
@@ -154,15 +157,26 @@ func (ce *CodeExtractor) Mul(i1, i2 frontend.Variable, in ...frontend.Variable) 
 }
 
 func (ce *CodeExtractor) DivUnchecked(i1, i2 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpDivUnchecked, i1, i2)
+	// https://math.stackexchange.com/a/2594232
+	inv := ce.AddApp(OpInverse, i1)
+	res := ce.Mul(i1, inv)
+	ce.AssertIsEqual(ce.Mul(i1, inv), res)
+	return res
 }
 
 func (ce *CodeExtractor) Div(i1, i2 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpDiv, i1, i2)
+	// https://math.stackexchange.com/a/2594232
+	inv := ce.AddApp(OpInverse, i1)
+	ce.AssertIsEqual(ce.Mul(i2, inv), 1)
+	res := ce.Mul(i1, inv)
+	ce.AssertIsEqual(ce.Mul(i1, inv), res)
+	return res
 }
 
 func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpInverse, i1)
+	res := ce.AddApp(OpInverse, i1)
+	ce.AssertIsEqual(ce.Mul(i1, res), 1)
+	return res
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
@@ -197,13 +211,11 @@ func (ce *CodeExtractor) Lookup2(b0, b1 frontend.Variable, i0, i1, i2, i3 fronte
 }
 
 func (ce *CodeExtractor) IsZero(i1 frontend.Variable) frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	return ce.AddApp(OpIsZero, i1)
 }
 
 func (ce *CodeExtractor) Cmp(i1, i2 frontend.Variable) frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	return ce.AddApp(OpCmp, i1, i2)
 }
 
 func (ce *CodeExtractor) AssertIsEqual(i1, i2 frontend.Variable) {

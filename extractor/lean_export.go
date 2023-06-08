@@ -80,25 +80,29 @@ func genGadgetCall(gateVar string, inAssignment []string, gateVars []string, gad
 	return fmt.Sprintf("    %s %s fun %s =>\n", name, operands, binder)
 }
 
-func genGateString(op Op, operands []string) string {
+func genGate(op Op, operands []string) string {
 	name := "unknown"
 	switch op {
 	case OpAdd:
 		name = "add"
-	case OpMulAcc:
-		name = "mac"
-	case OpNeg:
-		name = "neg"
 	case OpSub:
 		name = "sub"
 	case OpMul:
 		name = "mul"
-	case OpDivUnchecked:
-		name = "du"
-	case OpDiv:
-		name = "div"
 	case OpInverse:
 		name = "inv"
+	case OpXor:
+		name = "xor"
+	case OpOr:
+		name = "or"
+	case OpAnd:
+		name = "and"
+	case OpSelect:
+		name = "sel"
+	case OpIsZero:
+		name = "iz"
+	case OpCmp:
+		name = "cmp"
 	case OpAssertEq:
 		name = "eq"
 	case OpAssertNotEq:
@@ -117,7 +121,7 @@ func getGateName(gateVar string) string {
 	return varName
 }
 
-func genGateBinders(gateVar string) string {
+func genGateBinder(gateVar string) string {
 	gateName := getGateName(gateVar)
 	return fmt.Sprintf("∃%s, %s = ", gateName, gateName)
 }
@@ -126,7 +130,7 @@ func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, 
 	// functional is set to true when the op returns a value
 	functional := false
 	switch op {
-	case OpAdd, OpMulAcc, OpNeg, OpSub, OpMul, OpDivUnchecked, OpDiv, OpInverse:
+	case OpAdd, OpSub, OpMul, OpInverse, OpIsZero, OpCmp:
 		functional = true
 	}
 	
@@ -137,20 +141,20 @@ func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, 
 		switch op {
 		case OpAdd, OpSub, OpMul:
 			{
-				finalStr := fmt.Sprintf("    %s%s\n", genGateBinders(gateVar), genGateString(op, operands[0:2]))
+				finalStr := fmt.Sprintf("    %s%s\n", genGateBinder(gateVar), genGate(op, operands[0:2]))
 				if len(operands) > 2 {
 					for len(operands) > 2 {
 						operands = operands[1:]
 						operands[0] = getGateName(gateVar)
-						finalStr += fmt.Sprintf("    %s%s\n", genGateBinders(gateVar), genGateString(op, operands[0:2]))
+						finalStr += fmt.Sprintf("    %s%s\n", genGateBinder(gateVar), genGate(op, operands[0:2]))
 					}
 				}
 				return finalStr
 			}
-		default: return fmt.Sprintf("    %s%s\n", genGateBinders(gateVar), genGateString(op, operands))
+		default: return fmt.Sprintf("    %s%s\n", genGateBinder(gateVar), genGate(op, operands))
 		}
 	} else {
-		return fmt.Sprintf("    %s\n", genGateString(op, operands))
+		return fmt.Sprintf("    %s\n", genGate(op, operands))
 	}
 }
 
