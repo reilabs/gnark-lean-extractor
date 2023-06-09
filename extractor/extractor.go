@@ -191,13 +191,11 @@ func (ce *CodeExtractor) And(a, b frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) Select(b frontend.Variable, i1, i2 frontend.Variable) frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	return ce.AddApp(OpSelect, b, i1, i2)
 }
 
 func (ce *CodeExtractor) Lookup2(b0, b1 frontend.Variable, i0, i1, i2, i3 frontend.Variable) frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	return ce.AddApp(OpLookup, b0, b1, i0, i1, i2, i3)
 }
 
 func (ce *CodeExtractor) IsZero(i1 frontend.Variable) frontend.Variable {

@@ -107,6 +107,8 @@ func genGateOp(op Op) string {
 		name = "and"
 	case OpSelect:
 		name = "sel"
+	case OpLookup:
+		name = "lup"
 	case OpIsZero:
 		name = "iz"
 	case OpCmp:
@@ -150,9 +152,9 @@ func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, 
 	functional := false
 	callback := false
 	switch op {
-	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpIsZero:
+	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpSelect, OpLookup, OpCmp, OpIsZero:
 		callback = true
-	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul, OpCmp:
+	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul:
 		functional = true
 	}
 	

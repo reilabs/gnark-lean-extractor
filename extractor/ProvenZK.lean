@@ -67,6 +67,13 @@ def inv (a out : ZMod N): Prop := a ≠ 0 ∧ out = 1 / a
 def xor (a b out : ZMod N): Prop := is_bool a ∧ is_bool b ∧ out = a*(1-2*b)+b
 def or (a b out : ZMod N): Prop := is_bool a ∧ is_bool b ∧ out = a+b-a*b
 def and (a b out : ZMod N): Prop := is_bool a ∧ is_bool b ∧ out = a*b
+def sel (b i1 i2 out : ZMod N): Prop := is_bool b ∧ ((b = 1 ∧ out = i1) ∨ (b = 0 ∧ out = i2))
+def lup (b0 b1 i0 i1 i2 i3 out : ZMod N): Prop := is_bool b0 ∧ is_bool b1 ∧ (
+  (b0 = 0 ∧ b1 = 0 ∧ out = i0) ∨
+  (b0 = 1 ∧ b1 = 0 ∧ out = i1) ∨
+  (b0 = 0 ∧ b1 = 1 ∧ out = i2) ∨
+  (b0 = 1 ∧ b1 = 1 ∧ out = i3)
+)
 def iz (a out: ZMod N): Prop := (a = 0 ∧ out = 1) ∨ (a != 0 ∧ out = 0)
 def eq (a b : ZMod N): Prop := a = b
 def ne (a b : ZMod N): Prop := a ≠ b
