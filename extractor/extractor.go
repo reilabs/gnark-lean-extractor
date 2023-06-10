@@ -63,6 +63,8 @@ const (
 	OpCmp
 	OpAssertEq
 	OpAssertNotEq
+	OpAssertIsBool
+	OpAssertLessEqual
 )
 
 func (_ OpKind) isOp() {}
@@ -215,13 +217,11 @@ func (ce *CodeExtractor) AssertIsDifferent(i1, i2 frontend.Variable) {
 }
 
 func (ce *CodeExtractor) AssertIsBoolean(i1 frontend.Variable) {
-	//TODO implement me
-	panic("implement me")
+	ce.AddApp(OpAssertIsBool, i1)
 }
 
 func (ce *CodeExtractor) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
-	//TODO implement me
-	panic("implement me")
+	ce.AddApp(OpAssertLessEqual, v, bound)
 }
 
 func (ce *CodeExtractor) Println(a ...frontend.Variable) {

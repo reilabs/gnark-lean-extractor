@@ -117,6 +117,10 @@ func genGateOp(op Op) string {
 		name = "eq"
 	case OpAssertNotEq:
 		name = "ne"
+	case OpAssertIsBool:
+		name = "is_bool"
+	case OpAssertLessEqual:
+		name = "le"
 	}
 
 	return fmt.Sprintf("Gates.%s", name)
