@@ -35,6 +35,14 @@ type Proj struct {
 	Operand Operand
 }
 
+func createProjArray(size int, operand Operand) []frontend.Variable {
+	outs := make([]frontend.Variable, size)
+	for i := 0; i < size; i++ {
+    	outs[i] = Proj{i, operand}
+	}
+	return outs
+}
+
 func (_ Proj) isOperand() {}
 
 type Op interface {
@@ -177,6 +185,7 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 }
 
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
+	// Packs in little-endian
 	return ce.AddApp(OpFromBinary, b...)
 }
 
