@@ -86,7 +86,7 @@ func genGateOp(op Op) string {
 	case OpAdd:
 		name = "add"
 	case OpMulAcc:
-		name = "mac"
+		name = "mul_acc"
 	case OpNegative:
 		name = "neg"
 	case OpSub:
@@ -94,7 +94,7 @@ func genGateOp(op Op) string {
 	case OpMul:
 		name = "mul"
 	case OpDivUnchecked:
-		name = "du"
+		name = "div_unchecked"
 	case OpDiv:
 		name = "div"
 	case OpInverse:
@@ -106,11 +106,11 @@ func genGateOp(op Op) string {
 	case OpAnd:
 		name = "and"
 	case OpSelect:
-		name = "sel"
+		name = "select"
 	case OpLookup:
-		name = "lup"
+		name = "lookup"
 	case OpIsZero:
-		name = "iz"
+		name = "is_zero"
 	case OpCmp:
 		name = "cmp"
 	case OpAssertEq:
