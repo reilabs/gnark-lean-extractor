@@ -35,7 +35,7 @@ type Proj struct {
 	Operand Operand
 }
 
-func createProjArray(size int, operand Operand) []frontend.Variable {
+func makeProj(size int, operand Operand) []frontend.Variable {
 	outs := make([]frontend.Variable, size)
 	for i := 0; i < size; i++ {
     	outs[i] = Proj{i, operand}
@@ -249,8 +249,26 @@ func (ce *CodeExtractor) NewHint(f hint.Function, nbOutputs int, inputs ...front
 }
 
 func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
-	//TODO implement me
-	panic("implement me")
+	switch v.(type) {
+	case Const:
+		return v.(Const).Value, true
+	case Proj:
+		switch v.(Proj).Operand.(type) {
+		case Const:
+			return v.(Proj).Operand.(Const).Value, true
+		default:
+			fmt.Printf("Input must be of type Const, int64, big.Int %#v\n", v)
+			panic("invalid constant")
+		}
+	case int64:
+		return big.NewInt(v.(int64)), true
+	case big.Int:
+		casted := v.(big.Int)
+		return &casted, true
+	default:
+		fmt.Printf("Input must be of type Const, int64, big.Int %#v\n", v)
+		panic("invalid constant")
+	}
 }
 
 func (ce *CodeExtractor) DefineGadget(name string, arity int, constructor func(api abstractor.API, args ...frontend.Variable) []frontend.Variable) abstractor.Gadget {
