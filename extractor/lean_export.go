@@ -35,11 +35,11 @@ func CircuitToLean(circuit abstractor.Circuit) error {
 		Gadgets: []ExGadget{},
 	}
 	err := circuit.AbsDefine(&api)
-	if err != nil {		
+	if err != nil {
 		return err
 	}
 	schema, err := frontend.NewSchema(circuit)
-	if err != nil {		
+	if err != nil {
 		return err
 	}
 	var circuitInputs []ExArgs
@@ -63,10 +63,10 @@ func genArgs(inAssignment []ExArgs) string {
 	for i, in := range inAssignment {
 		switch in.Size {
 		case 1:
-			args[i] = fmt.Sprintf("(%s: F)", in.Input)
+			args[i] = fmt.Sprintf("(%s: F)", in.Name)
 		default:
-			args[i] = fmt.Sprintf("(%s: Vector F %d)", in.Input, in.Size)
-		}		
+			args[i] = fmt.Sprintf("(%s: Vector F %d)", in.Name, in.Size)
+		}
 	}
 	return strings.Join(args, " ")
 }
@@ -261,7 +261,7 @@ func genCircuitBody(circuit ExCircuit) string {
 func operandExpr(operand Operand, inAssignment []ExArgs, gateVars []string) string {
 	switch operand.(type) {
 	case Input:
-		return inAssignment[operand.(Input).Index].Input
+		return inAssignment[operand.(Input).Index].Name
 	case Gate:
 		return gateVars[operand.(Gate).Index]
 	case Proj:

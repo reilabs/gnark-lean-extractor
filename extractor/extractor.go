@@ -113,7 +113,7 @@ func (g *ExGadget) Call(args ...frontend.Variable) []frontend.Variable {
 }
 
 type ExArgs struct {
-	Input string
+	Name string
 	Size int
 }
 
