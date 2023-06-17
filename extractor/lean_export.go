@@ -13,9 +13,9 @@ func ExportGadget(gadget ExGadget) string {
 	if len(gadget.Outputs) > 1 {
 		kArgsType = fmt.Sprintf("Vect F %d", len(gadget.Outputs))
 	}
-	inAssignment := make([]string, gadget.Arity)
+	inAssignment := make([]ExArgs, gadget.Arity)
 	for i := 0; i < gadget.Arity; i++ {
-		inAssignment[i] = fmt.Sprintf("in_%d", i)
+		inAssignment[i] = ExArgs{fmt.Sprintf("in_%d", i), 1}
 	}
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
 }
@@ -42,23 +42,31 @@ func CircuitToLean(circuit abstractor.Circuit) error {
 	if err != nil {		
 		return err
 	}
-	var circuitInputs []string
+	var circuitInputs []ExArgs
 	for _,f := range schema.Fields {
-		circuitInputs = append(circuitInputs, f.Name)
+		fmt.Printf("%+v\n", f)
+		arg := ExArgs{f.Name, f.ArraySize}
+		circuitInputs = append(circuitInputs, arg)
 	}
 	extractorCircuit := ExCircuit{
 		Inputs:  circuitInputs,
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 	}
+	fmt.Printf("%+v\n", extractorCircuit.Inputs)
 	fmt.Println(ExportCircuit(extractorCircuit))
 	return nil
 }
 
-func genArgs(inAssignment []string) string {
+func genArgs(inAssignment []ExArgs) string {
 	args := make([]string, len(inAssignment))
 	for i, in := range inAssignment {
-		args[i] = fmt.Sprintf("(%s: F)", in)
+		switch in.Size {
+		case 1:
+			args[i] = fmt.Sprintf("(%s: F)", in.Input)
+		default:
+			args[i] = fmt.Sprintf("(%s: Vector F %d)", in.Input, in.Size)
+		}		
 	}
 	return strings.Join(args, " ")
 }
@@ -99,7 +107,7 @@ func assignGateVars(code []App, additional ...Operand) []string {
 	return gateVars
 }
 
-func genGadgetCall(gateVar string, inAssignment []string, gateVars []string, gadget *ExGadget, args []Operand) string {
+func genGadgetCall(gateVar string, inAssignment []ExArgs, gateVars []string, gadget *ExGadget, args []Operand) string {
 	name := gadget.Name
 	operands := strings.Join(operandExprs(args, inAssignment, gateVars), " ")
 	binder := "_"
@@ -180,7 +188,7 @@ func genGenericGate(op Op, operands []string) string {
 	return fmt.Sprintf("    %s %s ∧\n", genGateOp(op), strings.Join(operands, " "))
 }
 
-func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, args []Operand) string {
+func genOpCall(gateVar string, inAssignment []ExArgs, gateVars []string, op Op, args []Operand) string {
 	// functional is set to true when the op returns a value
 	functional := false
 	callback := false
@@ -215,7 +223,7 @@ func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, 
 	}
 }
 
-func genLine(app App, gateVar string, inAssignment []string, gateVars []string) string {
+func genLine(app App, gateVar string, inAssignment []ExArgs, gateVars []string) string {
 	switch app.Op.(type) {
 	case *ExGadget:
 		return genGadgetCall(gateVar, inAssignment, gateVars, app.Op.(*ExGadget), app.Args)
@@ -225,7 +233,7 @@ func genLine(app App, gateVar string, inAssignment []string, gateVars []string) 
 	return ""
 }
 
-func genGadgetBody(inAssignment []string, gadget ExGadget) string {
+func genGadgetBody(inAssignment []ExArgs, gadget ExGadget) string {
 	gateVars := assignGateVars(gadget.Code, gadget.Outputs...)
 	lines := make([]string, len(gadget.Code))
 	for i, app := range gadget.Code {
@@ -250,10 +258,10 @@ func genCircuitBody(circuit ExCircuit) string {
 	return strings.Join(append(lines, lastLine), "")
 }
 
-func operandExpr(operand Operand, inAssignment []string, gateVars []string) string {
+func operandExpr(operand Operand, inAssignment []ExArgs, gateVars []string) string {
 	switch operand.(type) {
 	case Input:
-		return inAssignment[operand.(Input).Index]
+		return inAssignment[operand.(Input).Index].Input
 	case Gate:
 		return gateVars[operand.(Gate).Index]
 	case Proj:
@@ -265,7 +273,7 @@ func operandExpr(operand Operand, inAssignment []string, gateVars []string) stri
 	}
 }
 
-func operandExprs(operands []Operand, inAssignment []string, gateVars []string) []string {
+func operandExprs(operands []Operand, inAssignment []ExArgs, gateVars []string) []string {
 	exprs := make([]string, len(operands))
 	for i, operand := range operands {
 		exprs[i] = operandExpr(operand, inAssignment, gateVars)

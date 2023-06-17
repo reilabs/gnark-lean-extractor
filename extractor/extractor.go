@@ -112,8 +112,13 @@ func (g *ExGadget) Call(args ...frontend.Variable) []frontend.Variable {
 	return outs
 }
 
+type ExArgs struct {
+	Input string
+	Size int
+}
+
 type ExCircuit struct {
-	Inputs  []string
+	Inputs  []ExArgs
 	Gadgets []ExGadget
 	Code    []App
 }
