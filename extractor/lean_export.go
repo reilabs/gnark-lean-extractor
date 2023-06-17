@@ -2,7 +2,10 @@ package extractor
 
 import (
 	"fmt"
+	"gnark-extractor/abstractor"
 	"strings"
+
+	"github.com/consensys/gnark/frontend"
 )
 
 func ExportGadget(gadget ExGadget) string {
@@ -24,6 +27,32 @@ func ExportCircuit(circuit ExCircuit) string {
 	}
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
 	return fmt.Sprintf("%s\n\n%s", strings.Join(gadgets, "\n\n"), circ)
+}
+
+func CircuitToLean(circuit abstractor.Circuit) error {
+	api := CodeExtractor{
+		Code:    []App{},
+		Gadgets: []ExGadget{},
+	}
+	err := circuit.AbsDefine(&api)
+	if err != nil {		
+		return err
+	}
+	schema, err := frontend.NewSchema(circuit)
+	if err != nil {		
+		return err
+	}
+	var circuitInputs []string
+	for _,f := range schema.Fields {
+		circuitInputs = append(circuitInputs, f.Name)
+	}
+	extractorCircuit := ExCircuit{
+		Inputs:  circuitInputs,
+		Gadgets: api.Gadgets,
+		Code:    api.Code,
+	}
+	fmt.Println(ExportCircuit(extractorCircuit))
+	return nil
 }
 
 func genArgs(inAssignment []string) string {

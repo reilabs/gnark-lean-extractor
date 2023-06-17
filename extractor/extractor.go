@@ -180,13 +180,13 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
 	// Packs in little-endian
-	return ce.AddApp(OpFromBinary, b...)
+	//return ce.AddApp(OpFromBinary, b...)
+	panic("implement me")
 }
 
 func (ce *CodeExtractor) Xor(a, b frontend.Variable) frontend.Variable {
@@ -234,17 +234,14 @@ func (ce *CodeExtractor) AssertIsLessOrEqual(v frontend.Variable, bound frontend
 }
 
 func (ce *CodeExtractor) Println(a ...frontend.Variable) {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (ce *CodeExtractor) Compiler() frontend.Compiler {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (ce *CodeExtractor) NewHint(f hint.Function, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
