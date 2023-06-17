@@ -44,7 +44,6 @@ func CircuitToLean(circuit abstractor.Circuit) error {
 	}
 	var circuitInputs []ExArgs
 	for _,f := range schema.Fields {
-		fmt.Printf("%+v\n", f)
 		arg := ExArgs{f.Name, f.ArraySize}
 		circuitInputs = append(circuitInputs, arg)
 	}
@@ -53,7 +52,6 @@ func CircuitToLean(circuit abstractor.Circuit) error {
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 	}
-	fmt.Printf("%+v\n", extractorCircuit.Inputs)
 	fmt.Println(ExportCircuit(extractorCircuit))
 	return nil
 }
