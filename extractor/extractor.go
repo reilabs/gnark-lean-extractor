@@ -191,7 +191,7 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
-	nbBits := 254
+	nbBits := 254 // Taken from gnark lib
 	if len(n) == 1 {
 		nbBits = n[0]
 		if nbBits < 0 {
