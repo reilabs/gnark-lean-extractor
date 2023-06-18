@@ -128,6 +128,10 @@ type CodeExtractor struct {
 	Gadgets []ExGadget
 }
 
+func operandFromArray(arg []frontend.Variable) Operand {
+	return arg[0].(Proj).Operand
+}
+
 func sanitizeVars(args ...frontend.Variable) []Operand {
 	ops := make([]Operand, len(args))
 	for i, arg := range args {
@@ -139,8 +143,10 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		case big.Int:
 			casted := arg.(big.Int)
 			ops[i] = Const{&casted}
+		case []frontend.Variable:
+			ops[i] = operandFromArray(arg.([]frontend.Variable))
 		default:
-			fmt.Printf("invalid argument %#v\n", arg)
+			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
 			panic("invalid argument")
 		}
 	}
@@ -185,13 +191,20 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
-	panic("implement me")
+	nbBits := 254
+	if len(n) == 1 {
+		nbBits = n[0]
+		if nbBits < 0 {
+			panic("Number of bits in ToBinary must be > 0")
+		}
+	}
+	gate := ce.AddApp(OpToBinary, i1, nbBits)
+	return []frontend.Variable{gate}
 }
 
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
 	// Packs in little-endian
-	//return ce.AddApp(OpFromBinary, b...)
-	panic("implement me")
+	return ce.AddApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
 }
 
 func (ce *CodeExtractor) Xor(a, b frontend.Variable) frontend.Variable {

@@ -63,7 +63,7 @@ func genArgs(inAssignment []ExArgs) string {
 		case 1:
 			args[i] = fmt.Sprintf("(%s: F)", in.Name)
 		default:
-			args[i] = fmt.Sprintf("(%s: Vector F %d)", in.Name, in.Size)
+			args[i] = fmt.Sprintf("(%s: Vector Bit %d)", in.Name, in.Size)
 		}
 	}
 	return strings.Join(args, " ")
@@ -156,6 +156,10 @@ func genGateOp(op Op) string {
 		name = "is_bool"
 	case OpAssertLessEqual:
 		name = "le"
+	case OpFromBinary:
+		name = "from_binary"
+	case OpToBinary:
+		name = "to_binary"
 	}
 
 	return fmt.Sprintf("Gates.%s", name)
@@ -193,7 +197,7 @@ func genOpCall(gateVar string, inAssignment []ExArgs, gateVars []string, op Op, 
 	switch op {
 	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpSelect, OpLookup, OpCmp, OpIsZero:
 		callback = true
-	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul:
+	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul, OpFromBinary, OpToBinary:
 		functional = true
 	}
 	
@@ -267,6 +271,7 @@ func operandExpr(operand Operand, inAssignment []ExArgs, gateVars []string) stri
 	case Const:
 		return operand.(Const).Value.Text(10)
 	default:
+		fmt.Printf("not yet supported type %T\n", operand)
 		panic("not yet supported")
 	}
 }
