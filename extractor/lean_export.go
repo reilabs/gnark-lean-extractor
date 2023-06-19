@@ -157,7 +157,7 @@ func genGateOp(op Op) string {
 	case OpAssertLessEqual:
 		name = "le"
 	case OpFromBinary:
-		name = "from_binary"
+		name = "from_binary Order"
 	case OpToBinary:
 		name = "to_binary"
 	}
@@ -165,16 +165,19 @@ func genGateOp(op Op) string {
 	return fmt.Sprintf("Gates.%s", name)
 }
 
-func getGateName(gateVar string) string {
+func getGateName(gateVar string, explicit bool) string {
 	varName := "_ignored_"
 	if gateVar != "" {
 		varName = gateVar
+	}
+	if explicit {
+		return fmt.Sprintf("(%s : F)", varName)
 	}
 	return varName
 }
 
 func genGateBinder(gateVar string) string {
-	gateName := getGateName(gateVar)
+	gateName := getGateName(gateVar, false)
 	return fmt.Sprintf("∃%s, %s = ", gateName, gateName)
 }
 
@@ -183,7 +186,8 @@ func genFunctionalGate(gateVar string, op Op, operands []string) string {
 }
 
 func genCallbackGate(gateVar string, op Op, operands []string) string {
-	return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", getGateName(gateVar), genGateOp(op), strings.Join(operands, " "), getGateName(gateVar))
+	gateName := getGateName(gateVar, false)
+	return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
 }
 
 func genGenericGate(op Op, operands []string) string {
@@ -211,7 +215,7 @@ func genOpCall(gateVar string, inAssignment []ExArgs, gateVars []string, op Op, 
 				finalStr := genFunctionalGate(gateVar, op, operands[0:2])
 				for len(operands) > 2 {
 					operands = operands[1:]
-					operands[0] = getGateName(gateVar)
+					operands[0] = getGateName(gateVar, false)
 					finalStr += genFunctionalGate(gateVar, op, operands[0:2])
 				}
 				return finalStr
