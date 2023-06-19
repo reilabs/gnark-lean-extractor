@@ -14,7 +14,17 @@ jobs:
       uses: actions/setup-go@v4
       with:
         go-version-file: './go.mod'
+    - name: Go Format
+      run: gofmt -s -w . && git diff --exit-code
+    - name: Go Vet
+      run: go vet ./...
+    - name: Go Tidy
+      run: go mod tidy && git diff --exit-code
+    - name: Go Mod
+      run: go mod download
+    - name: Go Mod Verify
+      run: go mod verify
     - name: Build
       run: go build -v ./...
     - name: Test
-      run: go test -v ./...
+      run: go test -v -count=1 -shuffle=on ./...
