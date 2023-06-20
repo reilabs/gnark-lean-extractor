@@ -105,7 +105,7 @@ func (g *ExGadget) Call(args ...frontend.Variable) []frontend.Variable {
 	if len(g.Outputs) == 1 {
 		outs[0] = gate
 	} else {
-		for i, _ := range g.Outputs {
+		for i := range g.Outputs {
 			outs[i] = Proj{i, gate}
 		}
 	}
