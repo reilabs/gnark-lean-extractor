@@ -38,7 +38,7 @@ type Proj struct {
 func makeProj(size int, operand Operand) []frontend.Variable {
 	outs := make([]frontend.Variable, size)
 	for i := 0; i < size; i++ {
-    	outs[i] = Proj{i, operand}
+		outs[i] = Proj{i, operand}
 	}
 	return outs
 }

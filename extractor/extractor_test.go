@@ -34,7 +34,7 @@ func TestExtractor(t *testing.T) {
 	}
 	defineExample(&api)
 	circuit := ExCircuit{
-		Inputs:  []string{"i1", "i2"},
+		Inputs:  []ExArgs{{"i1",1}, {"i2",1}},
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 	}

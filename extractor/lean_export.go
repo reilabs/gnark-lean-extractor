@@ -43,7 +43,7 @@ func CircuitToLean(circuit abstractor.Circuit) error {
 		return err
 	}
 	var circuitInputs []ExArgs
-	for _,f := range schema.Fields {
+	for _, f := range schema.Fields {
 		arg := ExArgs{f.Name, f.ArraySize}
 		circuitInputs = append(circuitInputs, arg)
 	}
@@ -204,7 +204,7 @@ func genOpCall(gateVar string, inAssignment []ExArgs, gateVars []string, op Op, 
 	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul, OpFromBinary, OpToBinary:
 		functional = true
 	}
-	
+
 	operands := operandExprs(args, inAssignment, gateVars)
 	if functional {
 		// if an operation supports infinite length of arguments,
