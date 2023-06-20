@@ -9,8 +9,8 @@ import (
 )
 
 type MerkleRecover struct {
-	Root    frontend.Variable    `gnark:",public"`
-	Element frontend.Variable    `gnark:",public"`
+	Root    frontend.Variable     `gnark:",public"`
+	Element frontend.Variable     `gnark:",public"`
 	Path    [20]frontend.Variable `gnark:",secret"`
 	Proof   [20]frontend.Variable `gnark:",secret"`
 }

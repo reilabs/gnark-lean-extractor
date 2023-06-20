@@ -59,9 +59,9 @@ func CircuitToLean(circuit abstractor.Circuit) error {
 }
 
 func KindOfField(a interface{}, s string) reflect.Kind {
-    v := reflect.ValueOf(a).Elem()
-    f := v.FieldByName(s)
-    return f.Kind()
+	v := reflect.ValueOf(a).Elem()
+	f := v.FieldByName(s)
+	return f.Kind()
 }
 
 func genArgs(inAssignment []ExArg) string {
@@ -71,7 +71,7 @@ func genArgs(inAssignment []ExArg) string {
 		case reflect.Array:
 			args[i] = fmt.Sprintf("(%s: Vector Bit %d)", in.Name, in.Size)
 		default:
-			args[i] = fmt.Sprintf("(%s: F)", in.Name)			
+			args[i] = fmt.Sprintf("(%s: F)", in.Name)
 		}
 	}
 	return strings.Join(args, " ")
