@@ -3,6 +3,7 @@ package extractor
 import (
 	"fmt"
 	"gnark-extractor/abstractor"
+	"reflect"
 	"strings"
 
 	"github.com/consensys/gnark/frontend"
@@ -13,9 +14,9 @@ func ExportGadget(gadget ExGadget) string {
 	if len(gadget.Outputs) > 1 {
 		kArgsType = fmt.Sprintf("Vect F %d", len(gadget.Outputs))
 	}
-	inAssignment := make([]ExArgs, gadget.Arity)
+	inAssignment := make([]ExArg, gadget.Arity)
 	for i := 0; i < gadget.Arity; i++ {
-		inAssignment[i] = ExArgs{fmt.Sprintf("in_%d", i), 1}
+		inAssignment[i] = ExArg{fmt.Sprintf("in_%d", i), 1, reflect.Interface}
 	}
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
 }
@@ -42,9 +43,10 @@ func CircuitToLean(circuit abstractor.Circuit) error {
 	if err != nil {
 		return err
 	}
-	var circuitInputs []ExArgs
+	var circuitInputs []ExArg
 	for _, f := range schema.Fields {
-		arg := ExArgs{f.Name, f.ArraySize}
+		kind := KindOfField(circuit, f.Name)
+		arg := ExArg{f.Name, f.ArraySize, kind}
 		circuitInputs = append(circuitInputs, arg)
 	}
 	extractorCircuit := ExCircuit{
@@ -56,14 +58,20 @@ func CircuitToLean(circuit abstractor.Circuit) error {
 	return nil
 }
 
-func genArgs(inAssignment []ExArgs) string {
+func KindOfField(a interface{}, s string) reflect.Kind {
+    v := reflect.ValueOf(a).Elem()
+    f := v.FieldByName(s)
+    return f.Kind()
+}
+
+func genArgs(inAssignment []ExArg) string {
 	args := make([]string, len(inAssignment))
 	for i, in := range inAssignment {
-		switch in.Size {
-		case 1:
-			args[i] = fmt.Sprintf("(%s: F)", in.Name)
-		default:
+		switch in.Type {
+		case reflect.Array:
 			args[i] = fmt.Sprintf("(%s: Vector Bit %d)", in.Name, in.Size)
+		default:
+			args[i] = fmt.Sprintf("(%s: F)", in.Name)			
 		}
 	}
 	return strings.Join(args, " ")
@@ -105,7 +113,7 @@ func assignGateVars(code []App, additional ...Operand) []string {
 	return gateVars
 }
 
-func genGadgetCall(gateVar string, inAssignment []ExArgs, gateVars []string, gadget *ExGadget, args []Operand) string {
+func genGadgetCall(gateVar string, inAssignment []ExArg, gateVars []string, gadget *ExGadget, args []Operand) string {
 	name := gadget.Name
 	operands := strings.Join(operandExprs(args, inAssignment, gateVars), " ")
 	binder := "_"
@@ -194,14 +202,14 @@ func genGenericGate(op Op, operands []string) string {
 	return fmt.Sprintf("    %s %s ∧\n", genGateOp(op), strings.Join(operands, " "))
 }
 
-func genOpCall(gateVar string, inAssignment []ExArgs, gateVars []string, op Op, args []Operand) string {
+func genOpCall(gateVar string, inAssignment []ExArg, gateVars []string, op Op, args []Operand) string {
 	// functional is set to true when the op returns a value
 	functional := false
 	callback := false
 	switch op {
-	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpSelect, OpLookup, OpCmp, OpIsZero:
+	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpSelect, OpLookup, OpCmp, OpIsZero, OpToBinary:
 		callback = true
-	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul, OpFromBinary, OpToBinary:
+	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul, OpFromBinary:
 		functional = true
 	}
 
@@ -229,7 +237,7 @@ func genOpCall(gateVar string, inAssignment []ExArgs, gateVars []string, op Op, 
 	}
 }
 
-func genLine(app App, gateVar string, inAssignment []ExArgs, gateVars []string) string {
+func genLine(app App, gateVar string, inAssignment []ExArg, gateVars []string) string {
 	switch app.Op.(type) {
 	case *ExGadget:
 		return genGadgetCall(gateVar, inAssignment, gateVars, app.Op.(*ExGadget), app.Args)
@@ -239,7 +247,7 @@ func genLine(app App, gateVar string, inAssignment []ExArgs, gateVars []string) 
 	return ""
 }
 
-func genGadgetBody(inAssignment []ExArgs, gadget ExGadget) string {
+func genGadgetBody(inAssignment []ExArg, gadget ExGadget) string {
 	gateVars := assignGateVars(gadget.Code, gadget.Outputs...)
 	lines := make([]string, len(gadget.Code))
 	for i, app := range gadget.Code {
@@ -264,7 +272,7 @@ func genCircuitBody(circuit ExCircuit) string {
 	return strings.Join(append(lines, lastLine), "")
 }
 
-func operandExpr(operand Operand, inAssignment []ExArgs, gateVars []string) string {
+func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) string {
 	switch operand.(type) {
 	case Input:
 		return inAssignment[operand.(Input).Index].Name
@@ -280,7 +288,7 @@ func operandExpr(operand Operand, inAssignment []ExArgs, gateVars []string) stri
 	}
 }
 
-func operandExprs(operands []Operand, inAssignment []ExArgs, gateVars []string) []string {
+func operandExprs(operands []Operand, inAssignment []ExArg, gateVars []string) []string {
 	exprs := make([]string, len(operands))
 	for i, operand := range operands {
 		exprs[i] = operandExpr(operand, inAssignment, gateVars)

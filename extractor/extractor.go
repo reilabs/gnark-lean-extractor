@@ -2,10 +2,12 @@ package extractor
 
 import (
 	"fmt"
-	"github.com/consensys/gnark/backend/hint"
-	"github.com/consensys/gnark/frontend"
 	"gnark-extractor/abstractor"
 	"math/big"
+	"reflect"
+
+	"github.com/consensys/gnark/backend/hint"
+	"github.com/consensys/gnark/frontend"
 )
 
 type Operand interface {
@@ -112,13 +114,14 @@ func (g *ExGadget) Call(args ...frontend.Variable) []frontend.Variable {
 	return outs
 }
 
-type ExArgs struct {
+type ExArg struct {
 	Name string
 	Size int
+	Type reflect.Kind
 }
 
 type ExCircuit struct {
-	Inputs  []ExArgs
+	Inputs  []ExArg
 	Gadgets []ExGadget
 	Code    []App
 }
@@ -272,8 +275,7 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 		case Const:
 			return v.(Proj).Operand.(Const).Value, true
 		default:
-			fmt.Printf("Input must be of type Const, int64, big.Int %#v\n", v)
-			panic("invalid constant")
+			return nil, false
 		}
 	case int64:
 		return big.NewInt(v.(int64)), true
