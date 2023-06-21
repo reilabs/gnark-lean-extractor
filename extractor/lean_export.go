@@ -285,7 +285,7 @@ func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) strin
 	case Const:
 		return operand.(Const).Value.Text(10)
 	default:
-		fmt.Printf("not yet supported type %T\n", operand)
+		fmt.Printf("Type %T\n", operand)
 		panic("not yet supported")
 	}
 }

@@ -285,8 +285,7 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 		casted := v.(big.Int)
 		return &casted, true
 	default:
-		fmt.Printf("Input must be of type Const, int64, big.Int %#v\n", v)
-		panic("invalid constant")
+		return nil, false
 	}
 }
 
