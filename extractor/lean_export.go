@@ -71,7 +71,7 @@ func genArgs(inAssignment []ExArg) string {
 	for i, in := range inAssignment {
 		switch in.Type {
 		case reflect.Array:
-			args[i] = fmt.Sprintf("(%s: Vector Bit %d)", in.Name, in.Size)
+			args[i] = fmt.Sprintf("(%s: Vector F %d)", in.Name, in.Size)
 		default:
 			args[i] = fmt.Sprintf("(%s: F)", in.Name)
 		}
@@ -167,7 +167,7 @@ func genGateOp(op Op) string {
 	case OpAssertLessEqual:
 		name = "le"
 	case OpFromBinary:
-		name = "from_binary Order"
+		name = "from_binary"
 	case OpToBinary:
 		name = "to_binary"
 	}
@@ -209,9 +209,9 @@ func genOpCall(gateVar string, inAssignment []ExArg, gateVars []string, op Op, a
 	functional := false
 	callback := false
 	switch op {
-	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpSelect, OpLookup, OpCmp, OpIsZero, OpToBinary:
+	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpSelect, OpLookup, OpCmp, OpIsZero, OpToBinary, OpFromBinary:
 		callback = true
-	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul, OpFromBinary:
+	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul:
 		functional = true
 	}
 
