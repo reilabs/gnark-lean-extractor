@@ -5,6 +5,7 @@ import (
 	"gnark-extractor/abstractor"
 	"testing"
 
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 )
 
@@ -47,7 +48,7 @@ func (circuit MerkleRecover) Define(api frontend.API) error {
 
 func TestMerkleRecover(t *testing.T) {
 	assignment := MerkleRecover{}
-	err := CircuitToLean(&assignment)
+	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
 		fmt.Println(err.Error())
@@ -89,7 +90,7 @@ func (circuit TwoGadgets) Define(api frontend.API) error {
 
 func TestTwoGadgets(t *testing.T) {
 	assignment := TwoGadgets{}
-	err := CircuitToLean(&assignment)
+	err := CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
 		fmt.Println(err.Error())

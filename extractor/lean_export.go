@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 )
 
@@ -30,10 +31,11 @@ func ExportCircuit(circuit ExCircuit) string {
 	return fmt.Sprintf("%s\n\n%s", strings.Join(gadgets, "\n\n"), circ)
 }
 
-func CircuitToLean(circuit abstractor.Circuit) error {
+func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
+		Field:   field,
 	}
 	err := circuit.AbsDefine(&api)
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"reflect"
 
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
 )
@@ -129,6 +130,7 @@ type ExCircuit struct {
 type CodeExtractor struct {
 	Code    []App
 	Gadgets []ExGadget
+	Field   ecc.ID
 }
 
 func operandFromArray(arg []frontend.Variable) Operand {
@@ -194,7 +196,7 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
-	nbBits := 254 // Taken from gnark lib
+	nbBits := ce.Field.ScalarField().BitLen()
 	if len(n) == 1 {
 		nbBits = n[0]
 		if nbBits < 0 {
