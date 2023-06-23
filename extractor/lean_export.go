@@ -36,32 +36,32 @@ func CircuitInit(class interface{}) (interface{}, error) {
 	// https://stackoverflow.com/a/14162161
 	// https://stackoverflow.com/a/63422049
 
-	// The purpose of this function is to initialise the 
+	// The purpose of this function is to initialise the
 	// struct fields with Operand interfaces for being
 	// processed by the Extractor.
 	v := reflect.ValueOf(class)
 	if v.Type().Kind() == reflect.Ptr {
-	    ptr := v
-	    v = ptr.Elem()
+		ptr := v
+		v = ptr.Elem()
 	} else {
-	    ptr := reflect.New(reflect.TypeOf(class))
-	    temp := ptr.Elem()
-	    temp.Set(v)
+		ptr := reflect.New(reflect.TypeOf(class))
+		temp := ptr.Elem()
+		temp.Set(v)
 	}
 
-    for j := 0; j < v.NumField(); j++ {
-        field := v.Field(j)
-        field_type := field.Type()
+	for j := 0; j < v.NumField(); j++ {
+		field := v.Field(j)
+		field_type := field.Type()
 
-        if (field_type.Kind() == reflect.Array) {
-        	// Can't assign an array to another array, therefore
-        	// initialise each element in the array
-			for i:= 0; i < field.Len(); i++ {
+		if field_type.Kind() == reflect.Array {
+			// Can't assign an array to another array, therefore
+			// initialise each element in the array
+			for i := 0; i < field.Len(); i++ {
 				// Operand corresponds to the position of the argument in the
 				// list of arguments of the circuit function
 				// Index is the index to be accessed
-	        	init := Proj{i, Input{j}}
-	        	value := reflect.ValueOf(init)
+				init := Proj{i, Input{j}}
+				value := reflect.ValueOf(init)
 
 				tmp_c := reflect.ValueOf(&class).Elem()
 				tmp := reflect.New(tmp_c.Elem().Type()).Elem()
@@ -69,18 +69,18 @@ func CircuitInit(class interface{}) (interface{}, error) {
 				tmp.Field(j).Index(i).Set(value)
 				tmp_c.Set(tmp)
 			}
-        } else if (field_type.Kind() == reflect.Interface) {
-        	init := Input{j}
-        	value := reflect.ValueOf(init)
+		} else if field_type.Kind() == reflect.Interface {
+			init := Input{j}
+			value := reflect.ValueOf(init)
 			tmp_c := reflect.ValueOf(&class).Elem()
 			tmp := reflect.New(tmp_c.Elem().Type()).Elem()
 			tmp.Set(tmp_c.Elem())
 			tmp.Field(j).Set(value)
 			tmp_c.Set(tmp)
-        } else {
-        	continue
-        }
-    }
+		} else {
+			continue
+		}
+	}
 	return class, nil
 }
 
