@@ -9,6 +9,31 @@ import (
 	"github.com/consensys/gnark/frontend"
 )
 
+type CircuitWithParameter struct {
+	In    frontend.Variable     `gnark:",public"`
+	Param int
+}
+
+func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
+	api.AssertIsEqual(circuit.Param, circuit.In)
+
+	return nil
+}
+
+func (circuit CircuitWithParameter) Define(api frontend.API) error {
+	return abstractor.Concretize(api, &circuit)
+}
+
+func TestCircuitWithParameter(t *testing.T) {
+	assignment := CircuitWithParameter{}
+	assignment.Param = 20
+	err := CircuitToLean(&assignment, ecc.BW6_756)
+	if err != nil {
+		fmt.Println("CircuitToLean error!")
+		fmt.Println(err.Error())
+	}
+}
+
 type MerkleRecover struct {
 	Root    frontend.Variable     `gnark:",public"`
 	Element frontend.Variable     `gnark:",public"`
@@ -38,8 +63,6 @@ func (circuit MerkleRecover) Define(api frontend.API) error {
 
 func TestMerkleRecover(t *testing.T) {
 	assignment := MerkleRecover{}
-	class, _ := CircuitInit(assignment)
-	assignment = class.(MerkleRecover)
 	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
@@ -79,8 +102,6 @@ func (circuit TwoGadgets) Define(api frontend.API) error {
 
 func TestTwoGadgets(t *testing.T) {
 	assignment := TwoGadgets{}
-	class, _ := CircuitInit(assignment)
-	assignment = class.(TwoGadgets)
 	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")

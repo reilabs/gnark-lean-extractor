@@ -8,6 +8,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/schema"
 )
 
 func ExportGadget(gadget ExGadget) string {
@@ -31,7 +32,7 @@ func ExportCircuit(circuit ExCircuit) string {
 	return fmt.Sprintf("%s\n\n%s", strings.Join(gadgets, "\n\n"), circ)
 }
 
-func CircuitInit(class interface{}) (interface{}, error) {
+func CircuitInit(class abstractor.Circuit, schema *schema.Schema) error {
 	// https://stackoverflow.com/a/49704408
 	// https://stackoverflow.com/a/14162161
 	// https://stackoverflow.com/a/63422049
@@ -49,14 +50,16 @@ func CircuitInit(class interface{}) (interface{}, error) {
 		temp.Set(v)
 	}
 
-	for j := 0; j < v.NumField(); j++ {
-		field := v.Field(j)
+	for j, f := range schema.Fields {
+		field_name := f.Name
+		field_size := f.ArraySize
+		field := v.FieldByName(field_name)
 		field_type := field.Type()
 
 		if field_type.Kind() == reflect.Array {
 			// Can't assign an array to another array, therefore
 			// initialise each element in the array
-			for i := 0; i < field.Len(); i++ {
+			for i := 0; i < field_size; i++ {
 				// Operand corresponds to the position of the argument in the
 				// list of arguments of the circuit function
 				// Index is the index to be accessed
@@ -66,7 +69,7 @@ func CircuitInit(class interface{}) (interface{}, error) {
 				tmp_c := reflect.ValueOf(&class).Elem()
 				tmp := reflect.New(tmp_c.Elem().Type()).Elem()
 				tmp.Set(tmp_c.Elem())
-				tmp.Field(j).Index(i).Set(value)
+				tmp.Elem().FieldByName(field_name).Index(i).Set(value)
 				tmp_c.Set(tmp)
 			}
 		} else if field_type.Kind() == reflect.Interface {
@@ -75,41 +78,52 @@ func CircuitInit(class interface{}) (interface{}, error) {
 			tmp_c := reflect.ValueOf(&class).Elem()
 			tmp := reflect.New(tmp_c.Elem().Type()).Elem()
 			tmp.Set(tmp_c.Elem())
-			tmp.Field(j).Set(value)
+			tmp.Elem().FieldByName(field_name).Set(value)
 			tmp_c.Set(tmp)
 		} else {
 			continue
 		}
 	}
-	return class, nil
+	return nil
 }
 
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
+	schema, err := frontend.NewSchema(circuit)
+	if err != nil {
+		return err
+	}
+
+	err = CircuitInit(circuit, schema)
+	if err != nil {
+		fmt.Println("CircuitInit error!")
+		fmt.Println(err.Error())
+	}
+
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
 		Field:   field,
 	}
-	err := circuit.AbsDefine(&api)
+
+	err = circuit.AbsDefine(&api)
 	if err != nil {
 		return err
 	}
-	schema, err := frontend.NewSchema(circuit)
-	if err != nil {
-		return err
-	}
+
 	var circuitInputs []ExArg
 	for _, f := range schema.Fields {
 		kind := KindOfField(circuit, f.Name)
 		arg := ExArg{f.Name, f.ArraySize, kind}
 		circuitInputs = append(circuitInputs, arg)
 	}
+
 	extractorCircuit := ExCircuit{
 		Inputs:  circuitInputs,
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 	}
 	fmt.Println(ExportCircuit(extractorCircuit))
+
 	return nil
 }
 
