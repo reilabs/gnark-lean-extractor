@@ -10,7 +10,7 @@ import (
 )
 
 type CircuitWithParameter struct {
-	In    frontend.Variable     `gnark:",public"`
+	In    frontend.Variable `gnark:",public"`
 	Param int
 }
 
