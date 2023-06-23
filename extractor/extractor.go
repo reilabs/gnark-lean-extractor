@@ -38,14 +38,6 @@ type Proj struct {
 	Operand Operand
 }
 
-func makeProj(size int, operand Operand) []frontend.Variable {
-	outs := make([]frontend.Variable, size)
-	for i := 0; i < size; i++ {
-		outs[i] = Proj{i, operand}
-	}
-	return outs
-}
-
 func (_ Proj) isOperand() {}
 
 type Op interface {

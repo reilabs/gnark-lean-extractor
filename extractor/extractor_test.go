@@ -21,33 +21,25 @@ func (circuit *MerkleRecover) AbsDefine(api abstractor.API) error {
 		return []frontend.Variable{api.Mul(args[0], args[1])}
 	})
 
-	Root := frontend.Variable(Input{0})
-	Element := frontend.Variable(Input{1})
-
-	// Operand corresponds to the position of the argument in the
-	// list of arguments of the circuit function
-	// Index is the index to be accessed
-
-	Path := makeProj(20, Input{2})
-	Proof := makeProj(20, Input{3})
-
-	current := Element
-	for i := 0; i < len(Path); i++ {
-		leftHash := hash.Call(current, Proof[i])[0]
-		rightHash := hash.Call(Proof[i], current)[0]
-		current = api.Select(Path[i], rightHash, leftHash)
+	current := circuit.Element
+	for i := 0; i < len(circuit.Path); i++ {
+		leftHash := hash.Call(current, circuit.Proof[i])[0]
+		rightHash := hash.Call(circuit.Proof[i], current)[0]
+		current = api.Select(circuit.Path[i], rightHash, leftHash)
 	}
-	api.AssertIsEqual(current, Root)
+	api.AssertIsEqual(current, circuit.Root)
 
 	return nil
 }
 
 func (circuit MerkleRecover) Define(api frontend.API) error {
-	return nil
+	return abstractor.Concretize(api, &circuit)
 }
 
 func TestMerkleRecover(t *testing.T) {
 	assignment := MerkleRecover{}
+	class, _ := CircuitInit(assignment)
+	assignment = class.(MerkleRecover)
 	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
@@ -74,23 +66,22 @@ func (circuit *TwoGadgets) AbsDefine(api abstractor.API) error {
 		return []frontend.Variable{r}
 	})
 
-	In_1 := Input{0}
-	In_2 := Input{1}
-
-	sum := api.Add(In_1, In_2)
-	prod := api.Mul(In_1, In_2)
+	sum := api.Add(circuit.In_1, circuit.In_2)
+	prod := api.Mul(circuit.In_1, circuit.In_2)
 	my_snd_widget.Call(sum, prod)
 
 	return nil
 }
 
 func (circuit TwoGadgets) Define(api frontend.API) error {
-	return nil
+	return abstractor.Concretize(api, &circuit)
 }
 
 func TestTwoGadgets(t *testing.T) {
 	assignment := TwoGadgets{}
-	err := CircuitToLean(&assignment, ecc.BN254)
+	class, _ := CircuitInit(assignment)
+	assignment = class.(TwoGadgets)
+	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
 		fmt.Println(err.Error())
