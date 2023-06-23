@@ -27,15 +27,19 @@ type Gate struct {
 
 func (_ Gate) isOperand() {}
 
+// Input is used to save the position of the argument in the
+// list of arguments of the circuit function.
 type Input struct {
 	Index int
 }
 
 func (_ Input) isOperand() {}
 
+// Index is the index to be accessed in the array
+// Operand[Index]
 type Proj struct {
-	Index   int
 	Operand Operand
+	Index   int
 }
 
 func (_ Proj) isOperand() {}
@@ -101,16 +105,21 @@ func (g *ExGadget) Call(args ...frontend.Variable) []frontend.Variable {
 		outs[0] = gate
 	} else {
 		for i := range g.Outputs {
-			outs[i] = Proj{i, gate}
+			outs[i] = Proj{gate, i}
 		}
 	}
 	return outs
 }
 
+type ExArgType struct {
+	Size int
+	Type *ExArgType
+}
+
 type ExArg struct {
 	Name string
-	Size int
-	Type reflect.Kind
+	Kind reflect.Kind
+	Type ExArgType
 }
 
 type ExCircuit struct {

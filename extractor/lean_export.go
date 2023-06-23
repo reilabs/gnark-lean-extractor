@@ -18,7 +18,7 @@ func ExportGadget(gadget ExGadget) string {
 	}
 	inAssignment := make([]ExArg, gadget.Arity)
 	for i := 0; i < gadget.Arity; i++ {
-		inAssignment[i] = ExArg{fmt.Sprintf("in_%d", i), 1, reflect.Interface}
+		inAssignment[i] = ExArg{fmt.Sprintf("in_%d", i), reflect.Interface, ExArgType{1, nil}}
 	}
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
 }
@@ -30,6 +30,22 @@ func ExportCircuit(circuit ExCircuit) string {
 	}
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
 	return fmt.Sprintf("%s\n\n%s", strings.Join(gadgets, "\n\n"), circ)
+}
+
+func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
+	for i := 0; i < f.ArraySize; i++ {
+		op := Proj{op, i}
+		switch len(f.SubFields) {
+		case 1:
+			ArrayInit(f.SubFields[0], v.Index(i), op)
+		case 0:
+			value := reflect.ValueOf(op)
+			v.Index(i).Set(value)
+		default:
+			panic("Only nested arrays supported in SubFields")
+		}
+	}
+	return nil
 }
 
 func CircuitInit(class abstractor.Circuit, schema *schema.Schema) error {
@@ -52,39 +68,50 @@ func CircuitInit(class abstractor.Circuit, schema *schema.Schema) error {
 
 	for j, f := range schema.Fields {
 		field_name := f.Name
-		field_size := f.ArraySize
 		field := v.FieldByName(field_name)
 		field_type := field.Type()
 
-		if field_type.Kind() == reflect.Array {
-			// Can't assign an array to another array, therefore
-			// initialise each element in the array
-			for i := 0; i < field_size; i++ {
-				// Operand corresponds to the position of the argument in the
-				// list of arguments of the circuit function
-				// Index is the index to be accessed
-				init := Proj{i, Input{j}}
-				value := reflect.ValueOf(init)
-
-				tmp_c := reflect.ValueOf(&class).Elem()
-				tmp := reflect.New(tmp_c.Elem().Type()).Elem()
-				tmp.Set(tmp_c.Elem())
-				tmp.Elem().FieldByName(field_name).Index(i).Set(value)
-				tmp_c.Set(tmp)
-			}
+		// Can't assign an array to another array, therefore
+		// initialise each element in the array
+		if field_type.Kind() == reflect.Array || field_type.Kind() == reflect.Slice {
+			tmp_c := reflect.ValueOf(&class).Elem()
+			tmp := reflect.New(tmp_c.Elem().Type()).Elem()
+			tmp.Set(tmp_c.Elem())
+			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
+			tmp_c.Set(tmp)
 		} else if field_type.Kind() == reflect.Interface {
 			init := Input{j}
 			value := reflect.ValueOf(init)
+
 			tmp_c := reflect.ValueOf(&class).Elem()
 			tmp := reflect.New(tmp_c.Elem().Type()).Elem()
 			tmp.Set(tmp_c.Elem())
 			tmp.Elem().FieldByName(field_name).Set(value)
 			tmp_c.Set(tmp)
 		} else {
-			continue
+			fmt.Printf("Skipped type %s\n", field_type.Kind())
 		}
 	}
 	return nil
+}
+
+func KindOfField(a interface{}, s string) reflect.Kind {
+	v := reflect.ValueOf(a).Elem()
+	f := v.FieldByName(s)
+	return f.Kind()
+}
+
+func CircuitArgs(field schema.Field) ExArgType {
+	// Handling only subfields which are nested arrays
+	switch len(field.SubFields) {
+	case 1:
+		subType := CircuitArgs(field.SubFields[0])
+		return ExArgType{field.ArraySize, &subType}
+	case 0:
+		return ExArgType{field.ArraySize, nil}
+	default:
+		panic("Only nested arrays supported in SubFields")
+	}
 }
 
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
@@ -113,7 +140,7 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
 	var circuitInputs []ExArg
 	for _, f := range schema.Fields {
 		kind := KindOfField(circuit, f.Name)
-		arg := ExArg{f.Name, f.ArraySize, kind}
+		arg := ExArg{f.Name, kind, CircuitArgs(f)}
 		circuitInputs = append(circuitInputs, arg)
 	}
 
@@ -127,18 +154,19 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
 	return nil
 }
 
-func KindOfField(a interface{}, s string) reflect.Kind {
-	v := reflect.ValueOf(a).Elem()
-	f := v.FieldByName(s)
-	return f.Kind()
+func genNestedArrays(a ExArgType) string {
+	if a.Type != nil {
+		return fmt.Sprintf("Vector (%s) %d", genNestedArrays(*a.Type), a.Size)
+	}
+	return fmt.Sprintf("Vector F %d", a.Size)
 }
 
 func genArgs(inAssignment []ExArg) string {
 	args := make([]string, len(inAssignment))
 	for i, in := range inAssignment {
-		switch in.Type {
-		case reflect.Array:
-			args[i] = fmt.Sprintf("(%s: Vector F %d)", in.Name, in.Size)
+		switch in.Kind {
+		case reflect.Array, reflect.Slice:
+			args[i] = fmt.Sprintf("(%s: %s)", in.Name, genNestedArrays(in.Type))
 		default:
 			args[i] = fmt.Sprintf("(%s: F)", in.Name)
 		}
