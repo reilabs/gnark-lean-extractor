@@ -2,7 +2,7 @@
 
 ## How to use
 Implement the methods `AbsDefine` and `Define` for `MyCircuit`. Choose a curve to test the circuit on, then call the Lean extractor the following way:
-```
+```go
 assignment := MyCircuit{}
 class, _ := CircuitInit(assignment)
 assignment = class.(MyCircuit)
