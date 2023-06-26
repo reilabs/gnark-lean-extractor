@@ -2,10 +2,13 @@ package extractor
 
 import (
 	"fmt"
-	"github.com/consensys/gnark/backend/hint"
-	"github.com/consensys/gnark/frontend"
 	"gnark-extractor/abstractor"
 	"math/big"
+	"reflect"
+
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/backend/hint"
+	"github.com/consensys/gnark/frontend"
 )
 
 type Operand interface {
@@ -24,15 +27,19 @@ type Gate struct {
 
 func (_ Gate) isOperand() {}
 
+// Input is used to save the position of the argument in the
+// list of arguments of the circuit function.
 type Input struct {
 	Index int
 }
 
 func (_ Input) isOperand() {}
 
+// Index is the index to be accessed in the array
+// Operand[Index]
 type Proj struct {
-	Index   int
 	Operand Operand
+	Index   int
 }
 
 func (_ Proj) isOperand() {}
@@ -46,18 +53,25 @@ type OpKind int
 const (
 	OpAdd OpKind = iota
 	OpMulAcc
-	OpMul
-	OpNeg
+	OpNegative
 	OpSub
+	OpMul
 	OpDiv
 	OpDivUnchecked
 	OpInverse
 	OpToBinary
 	OpFromBinary
 	OpXor
-	OpAnd
 	OpOr
+	OpAnd
+	OpSelect
+	OpLookup
+	OpIsZero
+	OpCmp
 	OpAssertEq
+	OpAssertNotEq
+	OpAssertIsBool
+	OpAssertLessEqual
 )
 
 func (_ OpKind) isOp() {}
@@ -91,14 +105,25 @@ func (g *ExGadget) Call(args ...frontend.Variable) []frontend.Variable {
 		outs[0] = gate
 	} else {
 		for i := range g.Outputs {
-			outs[i] = Proj{i, gate}
+			outs[i] = Proj{gate, i}
 		}
 	}
 	return outs
 }
 
+type ExArgType struct {
+	Size int
+	Type *ExArgType
+}
+
+type ExArg struct {
+	Name string
+	Kind reflect.Kind
+	Type ExArgType
+}
+
 type ExCircuit struct {
-	Inputs  []string
+	Inputs  []ExArg
 	Gadgets []ExGadget
 	Code    []App
 }
@@ -106,6 +131,11 @@ type ExCircuit struct {
 type CodeExtractor struct {
 	Code    []App
 	Gadgets []ExGadget
+	Field   ecc.ID
+}
+
+func operandFromArray(arg []frontend.Variable) Operand {
+	return arg[0].(Proj).Operand
 }
 
 func sanitizeVars(args ...frontend.Variable) []Operand {
@@ -119,8 +149,10 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		case big.Int:
 			casted := arg.(big.Int)
 			ops[i] = Const{&casted}
+		case []frontend.Variable:
+			ops[i] = operandFromArray(arg.([]frontend.Variable))
 		default:
-			fmt.Printf("invalid argument %#v\n", arg)
+			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
 			panic("invalid argument")
 		}
 	}
@@ -141,7 +173,7 @@ func (ce *CodeExtractor) MulAcc(a, b, c frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) Neg(i1 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpNeg, i1, -1)
+	return ce.AddApp(OpNegative, i1)
 }
 
 func (ce *CodeExtractor) Sub(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
@@ -165,12 +197,20 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	nbBits := ce.Field.ScalarField().BitLen()
+	if len(n) == 1 {
+		nbBits = n[0]
+		if nbBits < 0 {
+			panic("Number of bits in ToBinary must be > 0")
+		}
+	}
+	gate := ce.AddApp(OpToBinary, i1, nbBits)
+	return []frontend.Variable{gate}
 }
 
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpFromBinary, b...)
+	// Packs in little-endian
+	return ce.AddApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
 }
 
 func (ce *CodeExtractor) Xor(a, b frontend.Variable) frontend.Variable {
@@ -186,23 +226,19 @@ func (ce *CodeExtractor) And(a, b frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) Select(b frontend.Variable, i1, i2 frontend.Variable) frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	return ce.AddApp(OpSelect, b, i1, i2)
 }
 
 func (ce *CodeExtractor) Lookup2(b0, b1 frontend.Variable, i0, i1, i2, i3 frontend.Variable) frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	return ce.AddApp(OpLookup, b0, b1, i0, i1, i2, i3)
 }
 
 func (ce *CodeExtractor) IsZero(i1 frontend.Variable) frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	return ce.AddApp(OpIsZero, i1)
 }
 
 func (ce *CodeExtractor) Cmp(i1, i2 frontend.Variable) frontend.Variable {
-	//TODO implement me
-	panic("implement me")
+	return ce.AddApp(OpCmp, i1, i2)
 }
 
 func (ce *CodeExtractor) AssertIsEqual(i1, i2 frontend.Variable) {
@@ -210,38 +246,48 @@ func (ce *CodeExtractor) AssertIsEqual(i1, i2 frontend.Variable) {
 }
 
 func (ce *CodeExtractor) AssertIsDifferent(i1, i2 frontend.Variable) {
-	//TODO implement me
-	panic("implement me")
+	ce.AddApp(OpAssertNotEq, i1, i2)
 }
 
 func (ce *CodeExtractor) AssertIsBoolean(i1 frontend.Variable) {
-	//TODO implement me
-	panic("implement me")
+	ce.AddApp(OpAssertIsBool, i1)
 }
 
 func (ce *CodeExtractor) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
-	//TODO implement me
-	panic("implement me")
+	ce.AddApp(OpAssertLessEqual, v, bound)
 }
 
 func (ce *CodeExtractor) Println(a ...frontend.Variable) {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (ce *CodeExtractor) Compiler() frontend.Compiler {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (ce *CodeExtractor) NewHint(f hint.Function, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
-	//TODO implement me
 	panic("implement me")
 }
 
 func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
-	//TODO implement me
-	panic("implement me")
+	switch v.(type) {
+	case Const:
+		return v.(Const).Value, true
+	case Proj:
+		switch v.(Proj).Operand.(type) {
+		case Const:
+			return v.(Proj).Operand.(Const).Value, true
+		default:
+			return nil, false
+		}
+	case int64:
+		return big.NewInt(v.(int64)), true
+	case big.Int:
+		casted := v.(big.Int)
+		return &casted, true
+	default:
+		return nil, false
+	}
 }
 
 func (ce *CodeExtractor) DefineGadget(name string, arity int, constructor func(api abstractor.API, args ...frontend.Variable) []frontend.Variable) abstractor.Gadget {

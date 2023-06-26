@@ -2,7 +2,13 @@ package extractor
 
 import (
 	"fmt"
+	"gnark-extractor/abstractor"
+	"reflect"
 	"strings"
+
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/schema"
 )
 
 func ExportGadget(gadget ExGadget) string {
@@ -10,9 +16,9 @@ func ExportGadget(gadget ExGadget) string {
 	if len(gadget.Outputs) > 1 {
 		kArgsType = fmt.Sprintf("Vect F %d", len(gadget.Outputs))
 	}
-	inAssignment := make([]string, gadget.Arity)
+	inAssignment := make([]ExArg, gadget.Arity)
 	for i := 0; i < gadget.Arity; i++ {
-		inAssignment[i] = fmt.Sprintf("in_%d", i)
+		inAssignment[i] = ExArg{fmt.Sprintf("in_%d", i), reflect.Interface, ExArgType{1, nil}}
 	}
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
 }
@@ -26,10 +32,144 @@ func ExportCircuit(circuit ExCircuit) string {
 	return fmt.Sprintf("%s\n\n%s", strings.Join(gadgets, "\n\n"), circ)
 }
 
-func genArgs(inAssignment []string) string {
+func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
+	for i := 0; i < f.ArraySize; i++ {
+		op := Proj{op, i}
+		switch len(f.SubFields) {
+		case 1:
+			ArrayInit(f.SubFields[0], v.Index(i), op)
+		case 0:
+			value := reflect.ValueOf(op)
+			v.Index(i).Set(value)
+		default:
+			panic("Only nested arrays supported in SubFields")
+		}
+	}
+	return nil
+}
+
+func CircuitInit(class abstractor.Circuit, schema *schema.Schema) error {
+	// https://stackoverflow.com/a/49704408
+	// https://stackoverflow.com/a/14162161
+	// https://stackoverflow.com/a/63422049
+
+	// The purpose of this function is to initialise the
+	// struct fields with Operand interfaces for being
+	// processed by the Extractor.
+	v := reflect.ValueOf(class)
+	if v.Type().Kind() == reflect.Ptr {
+		ptr := v
+		v = ptr.Elem()
+	} else {
+		ptr := reflect.New(reflect.TypeOf(class))
+		temp := ptr.Elem()
+		temp.Set(v)
+	}
+
+	for j, f := range schema.Fields {
+		field_name := f.Name
+		field := v.FieldByName(field_name)
+		field_type := field.Type()
+
+		// Can't assign an array to another array, therefore
+		// initialise each element in the array
+		if field_type.Kind() == reflect.Array || field_type.Kind() == reflect.Slice {
+			tmp_c := reflect.ValueOf(&class).Elem()
+			tmp := reflect.New(tmp_c.Elem().Type()).Elem()
+			tmp.Set(tmp_c.Elem())
+			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
+			tmp_c.Set(tmp)
+		} else if field_type.Kind() == reflect.Interface {
+			init := Input{j}
+			value := reflect.ValueOf(init)
+
+			tmp_c := reflect.ValueOf(&class).Elem()
+			tmp := reflect.New(tmp_c.Elem().Type()).Elem()
+			tmp.Set(tmp_c.Elem())
+			tmp.Elem().FieldByName(field_name).Set(value)
+			tmp_c.Set(tmp)
+		} else {
+			fmt.Printf("Skipped type %s\n", field_type.Kind())
+		}
+	}
+	return nil
+}
+
+func KindOfField(a interface{}, s string) reflect.Kind {
+	v := reflect.ValueOf(a).Elem()
+	f := v.FieldByName(s)
+	return f.Kind()
+}
+
+func CircuitArgs(field schema.Field) ExArgType {
+	// Handling only subfields which are nested arrays
+	switch len(field.SubFields) {
+	case 1:
+		subType := CircuitArgs(field.SubFields[0])
+		return ExArgType{field.ArraySize, &subType}
+	case 0:
+		return ExArgType{field.ArraySize, nil}
+	default:
+		panic("Only nested arrays supported in SubFields")
+	}
+}
+
+func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
+	schema, err := frontend.NewSchema(circuit)
+	if err != nil {
+		return err
+	}
+
+	err = CircuitInit(circuit, schema)
+	if err != nil {
+		fmt.Println("CircuitInit error!")
+		fmt.Println(err.Error())
+	}
+
+	api := CodeExtractor{
+		Code:    []App{},
+		Gadgets: []ExGadget{},
+		Field:   field,
+	}
+
+	err = circuit.AbsDefine(&api)
+	if err != nil {
+		return err
+	}
+
+	var circuitInputs []ExArg
+	for _, f := range schema.Fields {
+		kind := KindOfField(circuit, f.Name)
+		arg := ExArg{f.Name, kind, CircuitArgs(f)}
+		circuitInputs = append(circuitInputs, arg)
+	}
+
+	extractorCircuit := ExCircuit{
+		Inputs:  circuitInputs,
+		Gadgets: api.Gadgets,
+		Code:    api.Code,
+	}
+	fmt.Println(ExportCircuit(extractorCircuit))
+
+	return nil
+}
+
+func genNestedArrays(a ExArgType) string {
+	if a.Type != nil {
+		return fmt.Sprintf("Vector (%s) %d", genNestedArrays(*a.Type), a.Size)
+	}
+	return fmt.Sprintf("Vector F %d", a.Size)
+}
+
+func genArgs(inAssignment []ExArg) string {
 	args := make([]string, len(inAssignment))
 	for i, in := range inAssignment {
-		args[i] = fmt.Sprintf("(%s: F)", in)
+		switch in.Kind {
+		case reflect.Array, reflect.Slice:
+			args[i] = fmt.Sprintf("(%s: %s)", in.Name, genNestedArrays(in.Type))
+		default:
+			args[i] = fmt.Sprintf("(%s: F)", in.Name)
+		}
 	}
 	return strings.Join(args, " ")
 }
@@ -70,7 +210,7 @@ func assignGateVars(code []App, additional ...Operand) []string {
 	return gateVars
 }
 
-func genGadgetCall(gateVar string, inAssignment []string, gateVars []string, gadget *ExGadget, args []Operand) string {
+func genGadgetCall(gateVar string, inAssignment []ExArg, gateVars []string, gadget *ExGadget, args []Operand) string {
 	name := gadget.Name
 	operands := strings.Join(operandExprs(args, inAssignment, gateVars), " ")
 	binder := "_"
@@ -80,40 +220,121 @@ func genGadgetCall(gateVar string, inAssignment []string, gateVars []string, gad
 	return fmt.Sprintf("    %s %s fun %s =>\n", name, operands, binder)
 }
 
-func genOpCall(gateVar string, inAssignment []string, gateVars []string, op Op, args []Operand) string {
+func genGateOp(op Op) string {
 	name := "unknown"
 	switch op {
 	case OpAdd:
 		name = "add"
-	case OpMul:
-		name = "mul"
+	case OpMulAcc:
+		name = "mul_acc"
+	case OpNegative:
+		name = "neg"
 	case OpSub:
 		name = "sub"
+	case OpMul:
+		name = "mul"
+	case OpDivUnchecked:
+		name = "div_unchecked"
 	case OpDiv:
 		name = "div"
+	case OpInverse:
+		name = "inv"
+	case OpXor:
+		name = "xor"
+	case OpOr:
+		name = "or"
+	case OpAnd:
+		name = "and"
+	case OpSelect:
+		name = "select"
+	case OpLookup:
+		name = "lookup"
+	case OpIsZero:
+		name = "is_zero"
+	case OpCmp:
+		name = "cmp"
 	case OpAssertEq:
 		name = "eq"
+	case OpAssertNotEq:
+		name = "ne"
+	case OpAssertIsBool:
+		name = "is_bool"
+	case OpAssertLessEqual:
+		name = "le"
+	case OpFromBinary:
+		name = "from_binary"
+	case OpToBinary:
+		name = "to_binary"
 	}
+
+	return fmt.Sprintf("Gates.%s", name)
+}
+
+func getGateName(gateVar string, explicit bool) string {
+	varName := "_ignored_"
+	if gateVar != "" {
+		varName = gateVar
+	}
+	if explicit {
+		return fmt.Sprintf("(%s : F)", varName)
+	}
+	return varName
+}
+
+func genGateBinder(gateVar string) string {
+	gateName := getGateName(gateVar, false)
+	return fmt.Sprintf("∃%s, %s = ", gateName, gateName)
+}
+
+func genFunctionalGate(gateVar string, op Op, operands []string) string {
+	return fmt.Sprintf("    %s%s %s ∧\n", genGateBinder(gateVar), genGateOp(op), strings.Join(operands, " "))
+}
+
+func genCallbackGate(gateVar string, op Op, operands []string) string {
+	gateName := getGateName(gateVar, false)
+	return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
+}
+
+func genGenericGate(op Op, operands []string) string {
+	return fmt.Sprintf("    %s %s ∧\n", genGateOp(op), strings.Join(operands, " "))
+}
+
+func genOpCall(gateVar string, inAssignment []ExArg, gateVars []string, op Op, args []Operand) string {
+	// functional is set to true when the op returns a value
 	functional := false
+	callback := false
 	switch op {
-	case OpAdd, OpMul, OpSub, OpDiv:
+	case OpDivUnchecked, OpDiv, OpInverse, OpXor, OpOr, OpAnd, OpSelect, OpLookup, OpCmp, OpIsZero, OpToBinary, OpFromBinary:
+		callback = true
+	case OpAdd, OpMulAcc, OpNegative, OpSub, OpMul:
 		functional = true
 	}
-	name = fmt.Sprintf("Gates.%s", name)
-	operands := strings.Join(operandExprs(args, inAssignment, gateVars), " ")
+
+	operands := operandExprs(args, inAssignment, gateVars)
 	if functional {
-		varName := "_ignored_"
-		if gateVar != "" {
-			varName = gateVar
+		// if an operation supports infinite length of arguments,
+		// turn it into a chain of operations
+		switch op {
+		case OpAdd, OpSub, OpMul:
+			{
+				finalStr := genFunctionalGate(gateVar, op, operands[0:2])
+				for len(operands) > 2 {
+					operands = operands[1:]
+					operands[0] = getGateName(gateVar, false)
+					finalStr += genFunctionalGate(gateVar, op, operands[0:2])
+				}
+				return finalStr
+			}
 		}
-		binder := fmt.Sprintf("∃%s, %s = ", varName, varName)
-		return fmt.Sprintf("    %s%s %s ∧\n", binder, name, operands)
+		return genFunctionalGate(gateVar, op, operands)
+	} else if callback {
+		return genCallbackGate(gateVar, op, operands)
 	} else {
-		return fmt.Sprintf("    %s %s ∧\n", name, operands)
+		return genGenericGate(op, operands)
 	}
 }
 
-func genLine(app App, gateVar string, inAssignment []string, gateVars []string) string {
+func genLine(app App, gateVar string, inAssignment []ExArg, gateVars []string) string {
 	switch app.Op.(type) {
 	case *ExGadget:
 		return genGadgetCall(gateVar, inAssignment, gateVars, app.Op.(*ExGadget), app.Args)
@@ -123,7 +344,7 @@ func genLine(app App, gateVar string, inAssignment []string, gateVars []string) 
 	return ""
 }
 
-func genGadgetBody(inAssignment []string, gadget ExGadget) string {
+func genGadgetBody(inAssignment []ExArg, gadget ExGadget) string {
 	gateVars := assignGateVars(gadget.Code, gadget.Outputs...)
 	lines := make([]string, len(gadget.Code))
 	for i, app := range gadget.Code {
@@ -148,10 +369,10 @@ func genCircuitBody(circuit ExCircuit) string {
 	return strings.Join(append(lines, lastLine), "")
 }
 
-func operandExpr(operand Operand, inAssignment []string, gateVars []string) string {
+func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) string {
 	switch operand.(type) {
 	case Input:
-		return inAssignment[operand.(Input).Index]
+		return inAssignment[operand.(Input).Index].Name
 	case Gate:
 		return gateVars[operand.(Gate).Index]
 	case Proj:
@@ -159,11 +380,12 @@ func operandExpr(operand Operand, inAssignment []string, gateVars []string) stri
 	case Const:
 		return operand.(Const).Value.Text(10)
 	default:
+		fmt.Printf("Type %T\n", operand)
 		panic("not yet supported")
 	}
 }
 
-func operandExprs(operands []Operand, inAssignment []string, gateVars []string) []string {
+func operandExprs(operands []Operand, inAssignment []ExArg, gateVars []string) []string {
 	exprs := make([]string, len(operands))
 	for i, operand := range operands {
 		exprs[i] = operandExpr(operand, inAssignment, gateVars)
