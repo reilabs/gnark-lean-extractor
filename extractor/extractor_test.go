@@ -10,6 +10,56 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type Semaphore struct {
+	IdentityNullifier frontend.Variable   `gnark:",secret"`
+	IdentityTrapdoor  frontend.Variable   `gnark:",secret"`
+	TreePathIndices   []frontend.Variable `gnark:",secret"`
+	TreeSiblings      []frontend.Variable `gnark:",secret"`
+
+	SignalHash        frontend.Variable `gnark:",public"`
+	ExternalNullifier frontend.Variable `gnark:",public"`
+}
+
+func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
+	// From https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom
+	calculate_secret := api.DefineGadget("CalculateSecret", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
+		panic("Todo!")
+	})
+
+	calculate_identity_commitment := api.DefineGadget("CalculateIdentityCommitment", 1, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
+		panic("Todo!")
+	})
+
+	calculate_nullifier_hash := api.DefineGadget("CalculateNullifierHash", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
+		panic("Todo!")
+	})
+
+	merkle_tree_inclusion_proof := api.DefineGadget("MerkleTreeInclusionProof", 3, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
+		panic("Todo!")
+	})
+
+	secret := calculate_secret.Call(circuit.IdentityNullifier, circuit.IdentityTrapdoor)
+	identity_commitment := calculate_identity_commitment.Call(secret)
+	calculate_nullifier_hash.Call(circuit.ExternalNullifier, circuit.IdentityNullifier) // nullifierHash
+	merkle_tree_inclusion_proof.Call(identity_commitment, circuit.TreeSiblings, circuit.TreePathIndices) //root
+	api.Mul(circuit.SignalHash, circuit.SignalHash)
+
+	return nil
+}
+
+func (circuit Semaphore) Define(api frontend.API) error {
+	return abstractor.Concretize(api, &circuit)
+}
+
+func TestSemaphore(t *testing.T) {
+	assignment := Semaphore{}
+	err := CircuitToLean(&assignment, ecc.BW6_756)
+	if err != nil {
+		fmt.Println("CircuitToLean error!")
+		fmt.Println(err.Error())
+	}
+}
+
 type CircuitWithParameter struct {
 	In    frontend.Variable `gnark:",public"`
 	Param int
