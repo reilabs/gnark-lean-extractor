@@ -7,6 +7,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
+	"github.com/stretchr/testify/assert"
 )
 
 type CircuitWithParameter struct {
@@ -25,8 +26,10 @@ func (circuit CircuitWithParameter) Define(api frontend.API) error {
 }
 
 func TestCircuitWithParameter(t *testing.T) {
+	paramValue := 20
 	assignment := CircuitWithParameter{}
-	assignment.Param = 20
+	assignment.Param = paramValue
+	assert.Equal(t, assignment.Param, paramValue, "assignment.Param is a const and should be 20.")
 	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
