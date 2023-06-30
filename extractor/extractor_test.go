@@ -40,6 +40,7 @@ type Hash struct {
 	In_1 frontend.Variable
 	In_2 frontend.Variable
 }
+
 func (gadget Hash) GadgetDefine(api abstractor.API) []frontend.Variable {
 	r := api.Mul(gadget.In_1, gadget.In_2)
 	return []frontend.Variable{r}
@@ -84,6 +85,7 @@ type MyWidget struct {
 	Test_1 frontend.Variable
 	Test_2 frontend.Variable
 }
+
 func (gadget MyWidget) GadgetDefine(api abstractor.API) []frontend.Variable {
 	sum := api.Add(gadget.Test_1, gadget.Test_2)
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
@@ -95,9 +97,10 @@ type MySecondWidget struct {
 	Test_1 frontend.Variable
 	Test_2 frontend.Variable
 }
+
 func (gadget MySecondWidget) GadgetDefine(api abstractor.API) []frontend.Variable {
 	my_widget := api.DefineGadget(&MyWidget{})
-	
+
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
 	snd := my_widget.Call(MyWidget{gadget.Test_1, gadget.Test_2})[0]
 	r := api.Mul(mul, snd)
