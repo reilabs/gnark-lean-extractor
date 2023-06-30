@@ -100,14 +100,14 @@ func (g *ExGadget) isOp() {}
 func (g *ExGadget) Call(gadget interface{}) []frontend.Variable {
 	args := []frontend.Variable{}
 
-    rv := reflect.Indirect(reflect.ValueOf(gadget))
-    rt := rv.Type()
-    for i := 0; i < rt.NumField(); i++ {
-        fld := rt.Field(i)
-        v := rv.FieldByName(fld.Name).Elem()
-        args = append(args, v.Interface().(frontend.Variable))
-    }
-	
+	rv := reflect.Indirect(reflect.ValueOf(gadget))
+	rt := rv.Type()
+	for i := 0; i < rt.NumField(); i++ {
+		fld := rt.Field(i)
+		v := rv.FieldByName(fld.Name).Elem()
+		args = append(args, v.Interface().(frontend.Variable))
+	}
+
 	gate := g.Extractor.AddApp(g, args...)
 	outs := make([]frontend.Variable, len(g.Outputs))
 	if len(g.Outputs) == 1 {

@@ -40,6 +40,7 @@ type Hash struct {
 	In_1 frontend.Variable
 	In_2 frontend.Variable
 }
+
 func (circuit *Hash) AbsDefine(api abstractor.API) error {
 	return nil
 }
@@ -86,9 +87,10 @@ func TestMerkleRecover(t *testing.T) {
 
 // Example: circuit with multiple gadgets
 type MyWidget struct {
-	Test_1    frontend.Variable
-	Test_2    frontend.Variable
+	Test_1 frontend.Variable
+	Test_2 frontend.Variable
 }
+
 func (circuit *MyWidget) AbsDefine(api abstractor.API) error {
 	return nil
 }
@@ -97,9 +99,10 @@ func (circuit MyWidget) Define(api frontend.API) error {
 }
 
 type MySecondWidget struct {
-	Test_1    frontend.Variable
-	Test_2    frontend.Variable
+	Test_1 frontend.Variable
+	Test_2 frontend.Variable
 }
+
 func (circuit *MySecondWidget) AbsDefine(api abstractor.API) error {
 	return nil
 }
