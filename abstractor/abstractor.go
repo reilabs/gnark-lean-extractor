@@ -3,12 +3,12 @@ package abstractor
 import "github.com/consensys/gnark/frontend"
 
 type Gadget interface {
-	Call(args ...frontend.Variable) []frontend.Variable
+	Call(gadget interface{}) []frontend.Variable
 }
 
 type API interface {
 	frontend.API
-	DefineGadget(name string, arity int, constructor func(api API, args ...frontend.Variable) []frontend.Variable) Gadget
+	DefineGadget(gadget interface{}, constructor func(api API, gadget interface{}) []frontend.Variable) Gadget
 }
 
 type Circuit interface {

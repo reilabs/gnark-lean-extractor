@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 )
 
+// Example: circuit with constant parameter
 type CircuitWithParameter struct {
 	In    frontend.Variable `gnark:",public"`
 	Param int
@@ -34,6 +35,18 @@ func TestCircuitWithParameter(t *testing.T) {
 	}
 }
 
+// Example: circuit with arrays and gadget
+type Hash struct {
+	In_1 frontend.Variable
+	In_2 frontend.Variable
+}
+func (circuit *Hash) AbsDefine(api abstractor.API) error {
+	return nil
+}
+func (circuit Hash) Define(api frontend.API) error {
+	return nil
+}
+
 type MerkleRecover struct {
 	Root    frontend.Variable     `gnark:",public"`
 	Element frontend.Variable     `gnark:",public"`
@@ -42,14 +55,15 @@ type MerkleRecover struct {
 }
 
 func (circuit *MerkleRecover) AbsDefine(api abstractor.API) error {
-	hash := api.DefineGadget("hash", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-		return []frontend.Variable{api.Mul(args[0], args[1])}
+	hash := api.DefineGadget(&Hash{}, func(api abstractor.API, gadget interface{}) []frontend.Variable {
+		r := api.Mul(gadget.(*Hash).In_1, gadget.(*Hash).In_2)
+		return []frontend.Variable{r}
 	})
 
 	current := circuit.Element
 	for i := 0; i < len(circuit.Path); i++ {
-		leftHash := hash.Call(current, circuit.Proof[i])[0]
-		rightHash := hash.Call(circuit.Proof[i], current)[0]
+		leftHash := hash.Call(Hash{current, circuit.Proof[i]})[0]
+		rightHash := hash.Call(Hash{circuit.Proof[i], current})[0]
 		current = api.Select(circuit.Path[i], rightHash, leftHash)
 	}
 	api.AssertIsEqual(current, circuit.Root)
@@ -70,28 +84,52 @@ func TestMerkleRecover(t *testing.T) {
 	}
 }
 
+// Example: circuit with multiple gadgets
+type MyWidget struct {
+	Test_1    frontend.Variable
+	Test_2    frontend.Variable
+}
+func (circuit *MyWidget) AbsDefine(api abstractor.API) error {
+	return nil
+}
+func (circuit MyWidget) Define(api frontend.API) error {
+	return nil
+}
+
+type MySecondWidget struct {
+	Test_1    frontend.Variable
+	Test_2    frontend.Variable
+}
+func (circuit *MySecondWidget) AbsDefine(api abstractor.API) error {
+	return nil
+}
+func (circuit MySecondWidget) Define(api frontend.API) error {
+	return nil
+}
+
 type TwoGadgets struct {
 	In_1 frontend.Variable
 	In_2 frontend.Variable
 }
 
 func (circuit *TwoGadgets) AbsDefine(api abstractor.API) error {
-	my_widget := api.DefineGadget("my_widget", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-		sum := api.Add(args[0], args[1])
-		mul := api.Mul(args[0], args[1])
+	my_widget := api.DefineGadget(&MyWidget{}, func(api abstractor.API, gadget interface{}) []frontend.Variable {
+		sum := api.Add(gadget.(*MyWidget).Test_1, gadget.(*MyWidget).Test_2)
+		mul := api.Mul(gadget.(*MyWidget).Test_1, gadget.(*MyWidget).Test_2)
 		r := api.Div(sum, mul)
 		return []frontend.Variable{r}
 	})
-	my_snd_widget := api.DefineGadget("my_snd_widget", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-		mul := api.Mul(args[0], args[1])
-		snd := my_widget.Call(args[0], args[1])
-		r := api.Mul(mul, snd[0])
+
+	my_snd_widget := api.DefineGadget(&MySecondWidget{}, func(api abstractor.API, gadget interface{}) []frontend.Variable {
+		mul := api.Mul(gadget.(*MySecondWidget).Test_1, gadget.(*MySecondWidget).Test_2)
+		snd := my_widget.Call(MyWidget{gadget.(*MySecondWidget).Test_1, gadget.(*MySecondWidget).Test_2})[0]
+		r := api.Mul(mul, snd)
 		return []frontend.Variable{r}
 	})
 
 	sum := api.Add(circuit.In_1, circuit.In_2)
 	prod := api.Mul(circuit.In_1, circuit.In_2)
-	my_snd_widget.Call(sum, prod)
+	my_snd_widget.Call(MySecondWidget{sum, prod})
 
 	return nil
 }

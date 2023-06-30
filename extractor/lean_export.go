@@ -17,8 +17,8 @@ func ExportGadget(gadget ExGadget) string {
 		kArgsType = fmt.Sprintf("Vect F %d", len(gadget.Outputs))
 	}
 	inAssignment := make([]ExArg, gadget.Arity)
-	for i := 0; i < gadget.Arity; i++ {
-		inAssignment[i] = ExArg{fmt.Sprintf("in_%d", i), reflect.Interface, ExArgType{1, nil}}
+	for i := 0; i < gadget.Arity; i++ {		
+		inAssignment[i] = ExArg{gadget.Fields[i].Name, reflect.Interface, ExArgType{1, nil}}
 	}
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
 }

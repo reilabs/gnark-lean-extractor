@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/schema"
 )
 
 type Operand interface {
@@ -91,14 +92,22 @@ type ExGadget struct {
 	Code      []App
 	Outputs   []Operand
 	Extractor *CodeExtractor
+	Fields    []schema.Field
 }
 
 func (g *ExGadget) isOp() {}
 
-func (g *ExGadget) Call(args ...frontend.Variable) []frontend.Variable {
-	if len(args) != g.Arity {
-		panic("wrong number of arguments")
-	}
+func (g *ExGadget) Call(gadget interface{}) []frontend.Variable {
+	args := []frontend.Variable{}
+
+    rv := reflect.Indirect(reflect.ValueOf(gadget))
+    rt := rv.Type()
+    for i := 0; i < rt.NumField(); i++ {
+        fld := rt.Field(i)
+        v := rv.FieldByName(fld.Name).Elem()
+        args = append(args, v.Interface().(frontend.Variable))
+    }
+	
 	gate := g.Extractor.AddApp(g, args...)
 	outs := make([]frontend.Variable, len(g.Outputs))
 	if len(g.Outputs) == 1 {
@@ -290,25 +299,27 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
-func (ce *CodeExtractor) DefineGadget(name string, arity int, constructor func(api abstractor.API, args ...frontend.Variable) []frontend.Variable) abstractor.Gadget {
+func (ce *CodeExtractor) DefineGadget(gadget interface{}, constructor func(api abstractor.API, gadget interface{}) []frontend.Variable) abstractor.Gadget {
+	schema, _ := frontend.NewSchema(gadget.(frontend.Circuit))
+	CircuitInit(gadget.(abstractor.Circuit), schema)
+	arity := schema.NbPublic + schema.NbSecret
+	name := reflect.TypeOf(gadget).Elem().Name()
+
 	oldCode := ce.Code
 	ce.Code = make([]App, 0)
-	inputs := make([]frontend.Variable, arity)
-	for i := 0; i < arity; i++ {
-		inputs[i] = Input{i}
-	}
-	outputs := constructor(ce, inputs...)
+	outputs := constructor(ce, gadget)
 	newCode := ce.Code
 	ce.Code = oldCode
-	gadget := ExGadget{
+	exGadget := ExGadget{
 		Name:      name,
 		Arity:     arity,
 		Code:      newCode,
 		Outputs:   sanitizeVars(outputs...),
 		Extractor: ce,
+		Fields:    schema.Fields,
 	}
-	ce.Gadgets = append(ce.Gadgets, gadget)
-	return &gadget
+	ce.Gadgets = append(ce.Gadgets, exGadget)
+	return &exGadget
 }
 
 var _ abstractor.API = &CodeExtractor{}
