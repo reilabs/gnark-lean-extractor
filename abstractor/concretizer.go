@@ -8,12 +8,7 @@ import (
 
 type ConcreteGadget struct {
 	api         API
-	// Circuit     any
 }
-
-// func (circuit ConcreteGadget) Define(api frontend.API) error {
-// 	return nil
-// }
 
 func (g *ConcreteGadget) Call(gadget GadgetDefinition) []frontend.Variable {
 	return gadget.GadgetDefine(g.api)
