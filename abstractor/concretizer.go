@@ -8,11 +8,15 @@ import (
 
 type ConcreteGadget struct {
 	api         API
-	constructor func(api API, gadget interface{}) []frontend.Variable
+	// Circuit     any
 }
 
-func (g *ConcreteGadget) Call(gadget interface{}) []frontend.Variable {
-	return g.constructor(g.api, gadget)
+// func (circuit ConcreteGadget) Define(api frontend.API) error {
+// 	return nil
+// }
+
+func (g *ConcreteGadget) Call(gadget GadgetDefinition) []frontend.Variable {
+	return gadget.GadgetDefine(g.api)
 }
 
 type Concretizer struct {
@@ -119,8 +123,8 @@ func (c *Concretizer) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	return c.api.ConstantValue(v)
 }
 
-func (c *Concretizer) DefineGadget(gadget interface{}, constructor func(api API, gadget interface{}) []frontend.Variable) Gadget {
-	return &ConcreteGadget{c, constructor}
+func (c *Concretizer) DefineGadget(gadget GadgetDefinition) Gadget {
+	return &ConcreteGadget{c}
 }
 
 var _ API = &(Concretizer{})

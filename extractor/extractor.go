@@ -97,7 +97,7 @@ type ExGadget struct {
 
 func (g *ExGadget) isOp() {}
 
-func (g *ExGadget) Call(gadget interface{}) []frontend.Variable {
+func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
 	args := []frontend.Variable{}
 
 	rv := reflect.Indirect(reflect.ValueOf(gadget))
@@ -299,15 +299,15 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
-func (ce *CodeExtractor) DefineGadget(gadget interface{}, constructor func(api abstractor.API, gadget interface{}) []frontend.Variable) abstractor.Gadget {
-	schema, _ := frontend.NewSchema(gadget.(frontend.Circuit))
-	CircuitInit(gadget.(abstractor.Circuit), schema)
+func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
+	schema, _ := GetSchema(gadget)
+	CircuitInit(gadget, schema)
 	arity := schema.NbPublic + schema.NbSecret
 	name := reflect.TypeOf(gadget).Elem().Name()
 
 	oldCode := ce.Code
 	ce.Code = make([]App, 0)
-	outputs := constructor(ce, gadget)
+	outputs := gadget.GadgetDefine(ce)
 	newCode := ce.Code
 	ce.Code = oldCode
 	exGadget := ExGadget{

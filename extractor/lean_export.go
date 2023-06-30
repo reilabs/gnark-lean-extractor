@@ -48,7 +48,7 @@ func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
 	return nil
 }
 
-func CircuitInit(class abstractor.Circuit, schema *schema.Schema) error {
+func CircuitInit(class any, schema *schema.Schema) error {
 	// https://stackoverflow.com/a/49704408
 	// https://stackoverflow.com/a/14162161
 	// https://stackoverflow.com/a/63422049
@@ -95,7 +95,7 @@ func CircuitInit(class abstractor.Circuit, schema *schema.Schema) error {
 	return nil
 }
 
-func KindOfField(a interface{}, s string) reflect.Kind {
+func KindOfField(a any, s string) reflect.Kind {
 	v := reflect.ValueOf(a).Elem()
 	f := v.FieldByName(s)
 	return f.Kind()
@@ -114,8 +114,14 @@ func CircuitArgs(field schema.Field) ExArgType {
 	}
 }
 
+// Cloned version of NewSchema without constraints
+func GetSchema(circuit any) (*schema.Schema, error) {
+	tVariable := reflect.ValueOf(struct{ A frontend.Variable }{}).FieldByName("A").Type()
+	return schema.New(circuit, tVariable)
+}
+
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
-	schema, err := frontend.NewSchema(circuit)
+	schema, err := GetSchema(circuit)
 	if err != nil {
 		return err
 	}

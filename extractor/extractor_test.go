@@ -40,12 +40,9 @@ type Hash struct {
 	In_1 frontend.Variable
 	In_2 frontend.Variable
 }
-
-func (circuit *Hash) AbsDefine(api abstractor.API) error {
-	return nil
-}
-func (circuit Hash) Define(api frontend.API) error {
-	return nil
+func (gadget Hash) GadgetDefine(api abstractor.API) []frontend.Variable {
+	r := api.Mul(gadget.In_1, gadget.In_2)
+	return []frontend.Variable{r}
 }
 
 type MerkleRecover struct {
@@ -56,10 +53,7 @@ type MerkleRecover struct {
 }
 
 func (circuit *MerkleRecover) AbsDefine(api abstractor.API) error {
-	hash := api.DefineGadget(&Hash{}, func(api abstractor.API, gadget interface{}) []frontend.Variable {
-		r := api.Mul(gadget.(*Hash).In_1, gadget.(*Hash).In_2)
-		return []frontend.Variable{r}
-	})
+	hash := api.DefineGadget(&Hash{})
 
 	current := circuit.Element
 	for i := 0; i < len(circuit.Path); i++ {
@@ -90,24 +84,24 @@ type MyWidget struct {
 	Test_1 frontend.Variable
 	Test_2 frontend.Variable
 }
-
-func (circuit *MyWidget) AbsDefine(api abstractor.API) error {
-	return nil
-}
-func (circuit MyWidget) Define(api frontend.API) error {
-	return nil
+func (gadget MyWidget) GadgetDefine(api abstractor.API) []frontend.Variable {
+	sum := api.Add(gadget.Test_1, gadget.Test_2)
+	mul := api.Mul(gadget.Test_1, gadget.Test_2)
+	r := api.Div(sum, mul)
+	return []frontend.Variable{r}
 }
 
 type MySecondWidget struct {
 	Test_1 frontend.Variable
 	Test_2 frontend.Variable
 }
-
-func (circuit *MySecondWidget) AbsDefine(api abstractor.API) error {
-	return nil
-}
-func (circuit MySecondWidget) Define(api frontend.API) error {
-	return nil
+func (gadget MySecondWidget) GadgetDefine(api abstractor.API) []frontend.Variable {
+	my_widget := api.DefineGadget(&MyWidget{})
+	
+	mul := api.Mul(gadget.Test_1, gadget.Test_2)
+	snd := my_widget.Call(MyWidget{gadget.Test_1, gadget.Test_2})[0]
+	r := api.Mul(mul, snd)
+	return []frontend.Variable{r}
 }
 
 type TwoGadgets struct {
@@ -116,19 +110,7 @@ type TwoGadgets struct {
 }
 
 func (circuit *TwoGadgets) AbsDefine(api abstractor.API) error {
-	my_widget := api.DefineGadget(&MyWidget{}, func(api abstractor.API, gadget interface{}) []frontend.Variable {
-		sum := api.Add(gadget.(*MyWidget).Test_1, gadget.(*MyWidget).Test_2)
-		mul := api.Mul(gadget.(*MyWidget).Test_1, gadget.(*MyWidget).Test_2)
-		r := api.Div(sum, mul)
-		return []frontend.Variable{r}
-	})
-
-	my_snd_widget := api.DefineGadget(&MySecondWidget{}, func(api abstractor.API, gadget interface{}) []frontend.Variable {
-		mul := api.Mul(gadget.(*MySecondWidget).Test_1, gadget.(*MySecondWidget).Test_2)
-		snd := my_widget.Call(MyWidget{gadget.(*MySecondWidget).Test_1, gadget.(*MySecondWidget).Test_2})[0]
-		r := api.Mul(mul, snd)
-		return []frontend.Variable{r}
-	})
+	my_snd_widget := api.DefineGadget(&MySecondWidget{})
 
 	sum := api.Add(circuit.In_1, circuit.In_2)
 	prod := api.Mul(circuit.In_1, circuit.In_2)
