@@ -7,7 +7,7 @@ import (
 )
 
 type ConcreteGadget struct {
-	api         API
+	api API
 }
 
 func (g *ConcreteGadget) Call(gadget GadgetDefinition) []frontend.Variable {
