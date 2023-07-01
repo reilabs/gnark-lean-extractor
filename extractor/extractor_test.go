@@ -19,12 +19,13 @@ type Semaphore struct {
 	SignalHash        frontend.Variable `gnark:",public"`
 	ExternalNullifier frontend.Variable `gnark:",public"`
 
-	Levels            int
-	Hashes            []frontend.Variable `gnark:",public"`
-
 	// Outputs to check
-	NullifierHash     frontend.Variable `gnark:",public"`
-	MTRoot            frontend.Variable `gnark:",public"`
+	NullifierHash frontend.Variable `gnark:",public"`
+	MTRoot        frontend.Variable `gnark:",public"`
+
+	// Working values
+	Levels int
+	Hashes []frontend.Variable `gnark:",public"`
 }
 
 func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
@@ -74,10 +75,10 @@ func (circuit Semaphore) Define(api frontend.API) error {
 func TestSemaphore(t *testing.T) {
 	nLevels := 3
 	assignment := Semaphore{
-		Levels: nLevels,
+		Levels:          nLevels,
 		TreePathIndices: make([]frontend.Variable, nLevels),
-		TreeSiblings: make([]frontend.Variable, nLevels),
-		Hashes: make([]frontend.Variable, nLevels+1),
+		TreeSiblings:    make([]frontend.Variable, nLevels),
+		Hashes:          make([]frontend.Variable, nLevels+1),
 	}
 	assert.Equal(t, len(assignment.TreePathIndices), len(assignment.TreeSiblings), "TreePathIndices and TreeSiblings must have the same length.")
 	err := CircuitToLean(&assignment, ecc.BW6_756)
