@@ -23,25 +23,37 @@ type Semaphore struct {
 func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 	// From https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom
 	calculate_secret := api.DefineGadget("CalculateSecret", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-		panic("Todo!")
+		// Dummy hash. Real circuit uses Poseidon
+		r := api.Mul(args[0], args[1])
+		return []frontend.Variable{r}
 	})
 
 	calculate_identity_commitment := api.DefineGadget("CalculateIdentityCommitment", 1, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-		panic("Todo!")
+		// Dummy hash. Real circuit uses Poseidon
+		r := api.Mul(args[0], args[0])
+		return []frontend.Variable{r}
 	})
 
 	calculate_nullifier_hash := api.DefineGadget("CalculateNullifierHash", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-		panic("Todo!")
+		// Dummy hash. Real circuit uses Poseidon
+		r := api.Mul(args[0], args[1])
+		return []frontend.Variable{r}
 	})
 
 	merkle_tree_inclusion_proof := api.DefineGadget("MerkleTreeInclusionProof", 3, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-		panic("Todo!")
+		// Dummy MerkleTree proof
+		// Array not supported as argument yet
+		sum := api.Mul(args[1], args[2])
+		r := api.Add(args[0], sum)
+		return []frontend.Variable{r}
 	})
 
-	secret := calculate_secret.Call(circuit.IdentityNullifier, circuit.IdentityTrapdoor)
-	identity_commitment := calculate_identity_commitment.Call(secret)
+	secret := calculate_secret.Call(circuit.IdentityNullifier, circuit.IdentityTrapdoor)[0]
+	identity_commitment := calculate_identity_commitment.Call(secret)[0]
 	calculate_nullifier_hash.Call(circuit.ExternalNullifier, circuit.IdentityNullifier) // nullifierHash
-	merkle_tree_inclusion_proof.Call(identity_commitment, circuit.TreeSiblings, circuit.TreePathIndices) //root
+	for i := 0; i < len(circuit.TreeSiblings); i++ {
+		merkle_tree_inclusion_proof.Call(identity_commitment, circuit.TreeSiblings[i], circuit.TreePathIndices[i]) //root
+	}
 	api.Mul(circuit.SignalHash, circuit.SignalHash)
 
 	return nil
@@ -52,7 +64,12 @@ func (circuit Semaphore) Define(api frontend.API) error {
 }
 
 func TestSemaphore(t *testing.T) {
-	assignment := Semaphore{}
+	nLevels := 3
+	assignment := Semaphore{
+		TreePathIndices: make([]frontend.Variable, nLevels),
+		TreeSiblings: make([]frontend.Variable, nLevels),
+	}
+	assert.Equal(t, len(assignment.TreePathIndices), len(assignment.TreeSiblings), "TreePathIndices and TreeSiblings must have the same length.")
 	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
