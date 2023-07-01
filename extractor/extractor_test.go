@@ -13,11 +13,14 @@ import (
 type Semaphore struct {
 	IdentityNullifier frontend.Variable   `gnark:",secret"`
 	IdentityTrapdoor  frontend.Variable   `gnark:",secret"`
-	TreePathIndices   []frontend.Variable `gnark:",secret"`
+	TreePathIndices   []frontend.Variable `gnark:",secret"` // 0 | 1
 	TreeSiblings      []frontend.Variable `gnark:",secret"`
 
 	SignalHash        frontend.Variable `gnark:",public"`
 	ExternalNullifier frontend.Variable `gnark:",public"`
+
+	NullifierHash     frontend.Variable `gnark:",public"`
+	MTRoot            frontend.Variable `gnark:",public"`
 }
 
 func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
@@ -50,10 +53,14 @@ func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 
 	secret := calculate_secret.Call(circuit.IdentityNullifier, circuit.IdentityTrapdoor)[0]
 	identity_commitment := calculate_identity_commitment.Call(secret)[0]
-	calculate_nullifier_hash.Call(circuit.ExternalNullifier, circuit.IdentityNullifier) // nullifierHash
+	nullifierHash := calculate_nullifier_hash.Call(circuit.ExternalNullifier, circuit.IdentityNullifier)[0]
+	api.AssertIsEqual(nullifierHash, circuit.NullifierHash) // Verify
 	for i := 0; i < len(circuit.TreeSiblings); i++ {
-		merkle_tree_inclusion_proof.Call(identity_commitment, circuit.TreeSiblings[i], circuit.TreePathIndices[i]) //root
-	}
+		root := merkle_tree_inclusion_proof.Call(identity_commitment, circuit.TreeSiblings[i], circuit.TreePathIndices[i])[0]
+		if (i == len(circuit.TreeSiblings)-1 ) {
+			api.AssertIsEqual(root, circuit.MTRoot) // Verify
+		}
+	}	
 	api.Mul(circuit.SignalHash, circuit.SignalHash)
 
 	return nil
