@@ -81,6 +81,7 @@ func TestSemaphore(t *testing.T) {
 		Hashes:          make([]frontend.Variable, nLevels+1),
 	}
 	assert.Equal(t, len(assignment.TreePathIndices), len(assignment.TreeSiblings), "TreePathIndices and TreeSiblings must have the same length.")
+	assert.Equal(t, len(assignment.TreePathIndices)+1, len(assignment.Hashes), "Hashes array has length +1.")
 	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
