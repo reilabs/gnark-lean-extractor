@@ -19,6 +19,9 @@ type Semaphore struct {
 	SignalHash        frontend.Variable `gnark:",public"`
 	ExternalNullifier frontend.Variable `gnark:",public"`
 
+	Levels            int
+	Hashes            []frontend.Variable `gnark:",public"`
+
 	// Outputs to check
 	NullifierHash     frontend.Variable `gnark:",public"`
 	MTRoot            frontend.Variable `gnark:",public"`
@@ -44,24 +47,21 @@ func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 		return []frontend.Variable{r}
 	})
 
-	merkle_tree_inclusion_proof := api.DefineGadget("MerkleTreeInclusionProof", 3, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-		// Dummy MerkleTree proof
-		// Array not supported as argument yet
-		sum := api.Mul(args[1], args[2])
-		r := api.Add(args[0], sum)
-		return []frontend.Variable{r}
-	})
-
 	secret := calculate_secret.Call(circuit.IdentityNullifier, circuit.IdentityTrapdoor)[0]
 	identity_commitment := calculate_identity_commitment.Call(secret)[0]
 	nullifierHash := calculate_nullifier_hash.Call(circuit.ExternalNullifier, circuit.IdentityNullifier)[0]
 	api.AssertIsEqual(nullifierHash, circuit.NullifierHash) // Verify
-	for i := 0; i < len(circuit.TreeSiblings); i++ {
-		root := merkle_tree_inclusion_proof.Call(identity_commitment, circuit.TreeSiblings[i], circuit.TreePathIndices[i])[0]
-		if (i == len(circuit.TreeSiblings)-1 ) {
-			api.AssertIsEqual(root, circuit.MTRoot) // Verify
-		}
-	}	
+
+	circuit.Hashes[0] = identity_commitment
+	for i := 0; i < circuit.Levels; i++ {
+		// Unrolled merkle_tree_inclusion_proof
+		api.AssertIsBoolean(circuit.TreePathIndices[i])
+		leftHash := api.Mul(circuit.Hashes[i], circuit.TreeSiblings[i])
+		rightHash := api.Mul(circuit.TreeSiblings[i], circuit.Hashes[i])
+		circuit.Hashes[i+1] = api.Select(circuit.TreePathIndices[i], rightHash, leftHash)
+	}
+	root := circuit.Hashes[circuit.Levels]
+	api.AssertIsEqual(root, circuit.MTRoot) // Verify
 	api.Mul(circuit.SignalHash, circuit.SignalHash)
 
 	return nil
@@ -74,8 +74,10 @@ func (circuit Semaphore) Define(api frontend.API) error {
 func TestSemaphore(t *testing.T) {
 	nLevels := 3
 	assignment := Semaphore{
+		Levels: nLevels,
 		TreePathIndices: make([]frontend.Variable, nLevels),
 		TreeSiblings: make([]frontend.Variable, nLevels),
+		Hashes: make([]frontend.Variable, nLevels+1),
 	}
 	assert.Equal(t, len(assignment.TreePathIndices), len(assignment.TreeSiblings), "TreePathIndices and TreeSiblings must have the same length.")
 	err := CircuitToLean(&assignment, ecc.BW6_756)
