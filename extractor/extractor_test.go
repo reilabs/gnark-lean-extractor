@@ -57,8 +57,8 @@ func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 	for i := 0; i < circuit.Levels; i++ {
 		// Unrolled merkle_tree_inclusion_proof
 		api.AssertIsBoolean(circuit.TreePathIndices[i])
-		leftHash := api.Mul(circuit.Hashes[i], circuit.TreeSiblings[i])
-		rightHash := api.Mul(circuit.TreeSiblings[i], circuit.Hashes[i])
+		leftHash := api.Mul(circuit.Hashes[i], circuit.TreeSiblings[i]) // Dummy hash. Real circuit uses Poseidon
+		rightHash := api.Mul(circuit.TreeSiblings[i], circuit.Hashes[i]) // Dummy hash. Real circuit uses Poseidon
 		circuit.Hashes[i+1] = api.Select(circuit.TreePathIndices[i], rightHash, leftHash)
 	}
 	root := circuit.Hashes[circuit.Levels]
