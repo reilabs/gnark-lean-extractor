@@ -218,12 +218,12 @@ func assignGateVars(code []App, additional ...Operand) []string {
 
 func genGadgetCall(gateVar string, inAssignment []ExArg, gateVars []string, gadget *ExGadget, args []Operand) string {
 	name := gadget.Name
-	operands := strings.Join(operandExprs(args, inAssignment, gateVars), " ")
+	operands := operandExprs(args, inAssignment, gateVars)
 	binder := "_"
 	if gateVar != "" {
 		binder = gateVar
 	}
-	return fmt.Sprintf("    %s %s fun %s =>\n", name, operands, binder)
+	return fmt.Sprintf("    %s %s fun %s =>\n", name, strings.Join(operands, " "), binder)
 }
 
 func genGateOp(op Op) string {
@@ -400,6 +400,10 @@ func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) strin
 		return gateVars[operand.(Gate).Index]
 	case Proj:
 		return fmt.Sprintf("%s[%d]", operandExpr(operand.(Proj).Operand, inAssignment, gateVars), operand.(Proj).Index)
+	case ProjArray:
+		opArray := operandExprs(operand.(ProjArray).Proj, inAssignment, gateVars)
+		opArray = []string{strings.Join(opArray, ", ")}
+		return fmt.Sprintf("vec!%s", opArray)
 	case Const:
 		return operand.(Const).Value.Text(10)
 	default:

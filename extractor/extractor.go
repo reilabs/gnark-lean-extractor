@@ -45,6 +45,12 @@ type Proj struct {
 
 func (_ Proj) isOperand() {}
 
+type ProjArray struct {
+	Proj []Operand
+}
+
+func (_ ProjArray) isOperand() {}
+
 type Op interface {
 	isOp()
 }
@@ -107,10 +113,10 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		fld := rt.Field(i)
 		v := rv.FieldByName(fld.Name)
 		if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
-			args = append(args, v.Interface().(frontend.Variable))
+			args = append(args, v.Interface().([]frontend.Variable))
 		} else {
 			args = append(args, v.Elem().Interface().(frontend.Variable))
-		}		
+		}
 	}
 
 	gate := g.Extractor.AddApp(g, args...)
@@ -148,28 +154,33 @@ type CodeExtractor struct {
 	Field   ecc.ID
 }
 
-func operandFromArray(arg []frontend.Variable) Operand {
-	switch arg[0].(type) {
-	case Input, Gate, Proj, Const:
-		return arg[0].(Operand)
-	default:
-		return arg[0].(Proj).Operand
-	}
-}
-
-func sanitizeVars(args ...frontend.Variable) []Operand {
+func operandFromArray(args []frontend.Variable) []Operand {
 	ops := make([]Operand, len(args))
 	for i, arg := range args {
 		switch arg.(type) {
 		case Input, Gate, Proj, Const:
 			ops[i] = arg.(Operand)
+		default:
+			ops[i] = arg.(Proj).Operand
+		}
+	}
+	return ops
+}
+
+func sanitizeVars(args ...frontend.Variable) []Operand {
+	ops := []Operand{}
+	for _, arg := range args {
+		switch arg.(type) {
+		case Input, Gate, Proj, Const:
+			ops = append(ops, arg.(Operand))
 		case int:
-			ops[i] = Const{big.NewInt(int64(arg.(int)))}
+			ops = append(ops, Const{big.NewInt(int64(arg.(int)))})
 		case big.Int:
 			casted := arg.(big.Int)
-			ops[i] = Const{&casted}
+			ops = append(ops, Const{&casted})
 		case []frontend.Variable:
-			ops[i] = operandFromArray(arg.([]frontend.Variable))
+			opsArray := operandFromArray(arg.([]frontend.Variable))
+			ops = append(ops, ProjArray{opsArray})
 		default:
 			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
 			panic("invalid argument")
@@ -179,7 +190,8 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 }
 
 func (ce *CodeExtractor) AddApp(op Op, args ...frontend.Variable) Operand {
-	ce.Code = append(ce.Code, App{op, sanitizeVars(args...)})
+	app := App{op, sanitizeVars(args...)}
+	ce.Code = append(ce.Code, app)
 	return Gate{len(ce.Code) - 1}
 }
 
