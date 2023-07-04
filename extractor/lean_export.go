@@ -16,10 +16,7 @@ func ExportGadget(gadget ExGadget) string {
 	if len(gadget.Outputs) > 1 {
 		kArgsType = fmt.Sprintf("Vect F %d", len(gadget.Outputs))
 	}
-	inAssignment := make([]ExArg, gadget.Arity)
-	for i := 0; i < gadget.Arity; i++ {
-		inAssignment[i] = ExArg{gadget.Fields[i].Name, reflect.Interface, ExArgType{1, nil}}
-	}
+	inAssignment := gadget.Args
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
 }
 
@@ -114,6 +111,16 @@ func CircuitArgs(field schema.Field) ExArgType {
 	}
 }
 
+func GetExArgs(circuit any, fields []schema.Field) []ExArg {
+	args := []ExArg{}
+	for _, f := range fields {
+		kind := KindOfField(circuit, f.Name)
+		arg := ExArg{f.Name, kind, CircuitArgs(f)}
+		args = append(args, arg)
+	}
+	return args
+}
+
 // Cloned version of NewSchema without constraints
 func GetSchema(circuit any) (*schema.Schema, error) {
 	tVariable := reflect.ValueOf(struct{ A frontend.Variable }{}).FieldByName("A").Type()
@@ -143,15 +150,8 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
 		return err
 	}
 
-	var circuitInputs []ExArg
-	for _, f := range schema.Fields {
-		kind := KindOfField(circuit, f.Name)
-		arg := ExArg{f.Name, kind, CircuitArgs(f)}
-		circuitInputs = append(circuitInputs, arg)
-	}
-
 	extractorCircuit := ExCircuit{
-		Inputs:  circuitInputs,
+		Inputs:  GetExArgs(circuit, schema.Fields),
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 	}
@@ -296,9 +296,25 @@ func genFunctionalGate(gateVar string, op Op, operands []string) string {
 	return fmt.Sprintf("    %s%s %s ∧\n", genGateBinder(gateVar), genGateOp(op), strings.Join(operands, " "))
 }
 
-func genCallbackGate(gateVar string, op Op, operands []string) string {
+func genCallbackGate(gateVar string, op Op, operands []string, args []Operand) string {
 	gateName := getGateName(gateVar, false)
-	return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
+	switch op {
+	case OpFromBinary:
+		is_gate := reflect.TypeOf(args[0]) == reflect.TypeOf(Gate{})
+		if len(args) == 1 && is_gate {
+			return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
+		}
+		return fmt.Sprintf("    ∃%s, %s vec![%s] %s ∧\n", gateName, genGateOp(op), strings.Join(operands, ", "), gateName)
+	case OpToBinary:
+		is_const := reflect.TypeOf(args[0]) == reflect.TypeOf(Const{})
+		if is_const {
+			operands[0] = fmt.Sprintf("(%s:F)", operands[0])
+			return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
+		}
+		return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
+	default:
+		return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
+	}
 }
 
 func genGenericGate(op Op, operands []string) string {
@@ -331,10 +347,11 @@ func genOpCall(gateVar string, inAssignment []ExArg, gateVars []string, op Op, a
 				}
 				return finalStr
 			}
+		default:
+			return genFunctionalGate(gateVar, op, operands)
 		}
-		return genFunctionalGate(gateVar, op, operands)
 	} else if callback {
-		return genCallbackGate(gateVar, op, operands)
+		return genCallbackGate(gateVar, op, operands, args)
 	} else {
 		return genGenericGate(op, operands)
 	}
