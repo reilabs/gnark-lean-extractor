@@ -25,7 +25,7 @@ func (gadget SliceGadget) GadgetDefine(api abstractor.API) []frontend.Variable {
 }
 
 type CircuitWithParameter struct {
-	In    frontend.Variable `gnark:",public"`
+	In    frontend.Variable   `gnark:",public"`
 	Path  []frontend.Variable `gnark:",public"`
 	Tree  []frontend.Variable `gnark:",public"`
 	Param int
@@ -33,13 +33,13 @@ type CircuitWithParameter struct {
 
 func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
 	slice_3 := api.DefineGadget(&SliceGadget{
-		In_1 : make([]frontend.Variable, 3),
-		In_2 : make([]frontend.Variable, 3),
+		In_1: make([]frontend.Variable, 3),
+		In_2: make([]frontend.Variable, 3),
 	})
 
 	slice_2 := api.DefineGadget(&SliceGadget{
-		In_1 : make([]frontend.Variable, 2),
-		In_2 : make([]frontend.Variable, 2),
+		In_1: make([]frontend.Variable, 2),
+		In_2: make([]frontend.Variable, 2),
 	})
 
 	api.FromBinary(circuit.Path...)
@@ -62,7 +62,7 @@ func (circuit CircuitWithParameter) Define(api frontend.API) error {
 }
 
 func TestCircuitWithParameter(t *testing.T) {
-	assignment := CircuitWithParameter{Path : make([]frontend.Variable, 3), Tree : make([]frontend.Variable, 2)}
+	assignment := CircuitWithParameter{Path: make([]frontend.Variable, 3), Tree: make([]frontend.Variable, 2)}
 	assignment.Param = 20
 	err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {

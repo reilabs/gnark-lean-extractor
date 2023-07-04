@@ -329,7 +329,7 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	// a parameter
 	arity := len(schema.Fields)
 	name := reflect.TypeOf(gadget).Elem().Name()
-	args := GetExArgs(gadget,schema.Fields)
+	args := GetExArgs(gadget, schema.Fields)
 
 	// To distinguish between gadgets instantiated with different array
 	// sizes, add a suffix to the name. The suffix of each instantiation
