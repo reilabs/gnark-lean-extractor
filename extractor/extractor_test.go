@@ -74,7 +74,7 @@ func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 	})
 
 	secret := dummy_poseidon_2.Call(DummyPoseidon{[]frontend.Variable{circuit.IdentityNullifier, circuit.IdentityTrapdoor}})[0]
-	identity_commitment := dummy_poseidon_1.Call(DummyPoseidon{[]frontend.Variable{secret}})[0]	
+	identity_commitment := dummy_poseidon_1.Call(DummyPoseidon{[]frontend.Variable{secret}})[0]
 	nullifierHash := dummy_poseidon_2.Call(DummyPoseidon{[]frontend.Variable{circuit.ExternalNullifier, circuit.IdentityNullifier}})[0]
 	api.AssertIsEqual(nullifierHash, circuit.NullifierHash) // Verify
 
