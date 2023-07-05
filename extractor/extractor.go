@@ -9,6 +9,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
+	"github.com/consensys/gnark/frontend/schema"
 )
 
 type Operand interface {
@@ -43,6 +44,12 @@ type Proj struct {
 }
 
 func (_ Proj) isOperand() {}
+
+type ProjArray struct {
+	Proj []Operand
+}
+
+func (_ ProjArray) isOperand() {}
 
 type Op interface {
 	isOp()
@@ -91,14 +98,27 @@ type ExGadget struct {
 	Code      []App
 	Outputs   []Operand
 	Extractor *CodeExtractor
+	Fields    []schema.Field
+	Args      []ExArg
 }
 
 func (g *ExGadget) isOp() {}
 
-func (g *ExGadget) Call(args ...frontend.Variable) []frontend.Variable {
-	if len(args) != g.Arity {
-		panic("wrong number of arguments")
+func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
+	args := []frontend.Variable{}
+
+	rv := reflect.Indirect(reflect.ValueOf(gadget))
+	rt := rv.Type()
+	for i := 0; i < rt.NumField(); i++ {
+		fld := rt.Field(i)
+		v := rv.FieldByName(fld.Name)
+		if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
+			args = append(args, v.Interface().([]frontend.Variable))
+		} else {
+			args = append(args, v.Elem().Interface().(frontend.Variable))
+		}
 	}
+
 	gate := g.Extractor.AddApp(g, args...)
 	outs := make([]frontend.Variable, len(g.Outputs))
 	if len(g.Outputs) == 1 {
@@ -134,23 +154,33 @@ type CodeExtractor struct {
 	Field   ecc.ID
 }
 
-func operandFromArray(arg []frontend.Variable) Operand {
-	return arg[0].(Proj).Operand
-}
-
-func sanitizeVars(args ...frontend.Variable) []Operand {
+func operandFromArray(args []frontend.Variable) []Operand {
 	ops := make([]Operand, len(args))
 	for i, arg := range args {
 		switch arg.(type) {
 		case Input, Gate, Proj, Const:
 			ops[i] = arg.(Operand)
+		default:
+			ops[i] = arg.(Proj).Operand
+		}
+	}
+	return ops
+}
+
+func sanitizeVars(args ...frontend.Variable) []Operand {
+	ops := []Operand{}
+	for _, arg := range args {
+		switch arg.(type) {
+		case Input, Gate, Proj, Const:
+			ops = append(ops, arg.(Operand))
 		case int:
-			ops[i] = Const{big.NewInt(int64(arg.(int)))}
+			ops = append(ops, Const{big.NewInt(int64(arg.(int)))})
 		case big.Int:
 			casted := arg.(big.Int)
-			ops[i] = Const{&casted}
+			ops = append(ops, Const{&casted})
 		case []frontend.Variable:
-			ops[i] = operandFromArray(arg.([]frontend.Variable))
+			opsArray := operandFromArray(arg.([]frontend.Variable))
+			ops = append(ops, ProjArray{opsArray})
 		default:
 			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
 			panic("invalid argument")
@@ -160,7 +190,8 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 }
 
 func (ce *CodeExtractor) AddApp(op Op, args ...frontend.Variable) Operand {
-	ce.Code = append(ce.Code, App{op, sanitizeVars(args...)})
+	app := App{op, sanitizeVars(args...)}
+	ce.Code = append(ce.Code, app)
 	return Gate{len(ce.Code) - 1}
 }
 
@@ -290,25 +321,43 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
-func (ce *CodeExtractor) DefineGadget(name string, arity int, constructor func(api abstractor.API, args ...frontend.Variable) []frontend.Variable) abstractor.Gadget {
+func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
+	schema, _ := GetSchema(gadget)
+	CircuitInit(gadget, schema)
+	// Can't use `schema.NbPublic + schema.NbSecret`
+	// for arity because each array element is considered
+	// a parameter
+	arity := len(schema.Fields)
+	name := reflect.TypeOf(gadget).Elem().Name()
+	args := GetExArgs(gadget, schema.Fields)
+
+	// To distinguish between gadgets instantiated with different array
+	// sizes, add a suffix to the name. The suffix of each instantiation
+	// is made up of the concatenation of the length of all the array
+	// fields in the gadget
+	suffix := ""
+	for _, a := range args {
+		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
+			suffix += fmt.Sprintf("_%d", a.Type.Size)
+		}
+	}
+
 	oldCode := ce.Code
 	ce.Code = make([]App, 0)
-	inputs := make([]frontend.Variable, arity)
-	for i := 0; i < arity; i++ {
-		inputs[i] = Input{i}
-	}
-	outputs := constructor(ce, inputs...)
+	outputs := gadget.DefineGadget(ce)
 	newCode := ce.Code
 	ce.Code = oldCode
-	gadget := ExGadget{
-		Name:      name,
+	exGadget := ExGadget{
+		Name:      fmt.Sprintf("%s%s", name, suffix),
 		Arity:     arity,
 		Code:      newCode,
 		Outputs:   sanitizeVars(outputs...),
 		Extractor: ce,
+		Fields:    schema.Fields,
+		Args:      args,
 	}
-	ce.Gadgets = append(ce.Gadgets, gadget)
-	return &gadget
+	ce.Gadgets = append(ce.Gadgets, exGadget)
+	return &exGadget
 }
 
 var _ abstractor.API = &CodeExtractor{}
