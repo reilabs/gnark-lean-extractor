@@ -101,7 +101,6 @@ func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 	calculate_secret := api.DefineGadget(&CalculateSecret{})
 	calculate_identity_commitment := api.DefineGadget(&CalculateIdentityCommitment{})
 	calculate_nullifier_hash := api.DefineGadget(&CalculateNullifierHash{})
-	// dummy_poseidon := api.DefineGadget(&DummyPoseidon{})
 	merkle_tree_inclusion_proof := api.DefineGadget(&MerkleTreeInclusionProof{
 		PathIndices: make([]frontend.Variable, circuit.Levels),
 		Siblings:    make([]frontend.Variable, circuit.Levels),
