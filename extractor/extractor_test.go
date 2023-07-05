@@ -10,84 +10,102 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// type Semaphore struct {
-// 	IdentityNullifier frontend.Variable   `gnark:",secret"`
-// 	IdentityTrapdoor  frontend.Variable   `gnark:",secret"`
-// 	TreePathIndices   []frontend.Variable `gnark:",secret"` // 0 | 1
-// 	TreeSiblings      []frontend.Variable `gnark:",secret"`
+// Example: Semaphore circuit
+type CalculateSecret struct {
+	IdentityNullifier frontend.Variable
+	IdentityTrapdoor  frontend.Variable
+}
+func (gadget CalculateSecret) DefineGadget(api abstractor.API) []frontend.Variable {
+	// Dummy hash. Real circuit uses Poseidon
+	r := api.Mul(gadget.IdentityNullifier, gadget.IdentityTrapdoor)
+	return []frontend.Variable{r}
+}
 
-// 	SignalHash        frontend.Variable `gnark:",public"`
-// 	ExternalNullifier frontend.Variable `gnark:",public"`
+type CalculateIdentityCommitment struct {
+	Secret frontend.Variable
+}
+func (gadget CalculateIdentityCommitment) DefineGadget(api abstractor.API) []frontend.Variable {
+	// Dummy hash. Real circuit uses Poseidon
+	r := api.Mul(gadget.Secret, gadget.Secret)
+	return []frontend.Variable{r}
+}
 
-// 	// Outputs to check
-// 	NullifierHash frontend.Variable `gnark:",public"`
-// 	MTRoot        frontend.Variable `gnark:",public"`
+type CalculateNullifierHash struct {
+	IdentityNullifier frontend.Variable
+	ExternalNullifier frontend.Variable
+}
+func (gadget CalculateNullifierHash) DefineGadget(api abstractor.API) []frontend.Variable {
+	// Dummy hash. Real circuit uses Poseidon
+	r := api.Mul(gadget.IdentityNullifier, gadget.ExternalNullifier)
+	return []frontend.Variable{r}
+}
 
-// 	// Working values
-// 	Levels int
-// 	Hashes []frontend.Variable `gnark:",public"`
-// }
+type Semaphore struct {
+	IdentityNullifier frontend.Variable   `gnark:",secret"`
+	IdentityTrapdoor  frontend.Variable   `gnark:",secret"`
+	TreePathIndices   []frontend.Variable `gnark:",secret"` // 0 | 1
+	TreeSiblings      []frontend.Variable `gnark:",secret"`
 
-// func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
-// 	// From https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom
-// 	calculate_secret := api.DefineGadget("CalculateSecret", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-// 		// Dummy hash. Real circuit uses Poseidon
-// 		r := api.Mul(args[0], args[1])
-// 		return []frontend.Variable{r}
-// 	})
+	SignalHash        frontend.Variable `gnark:",public"`
+	ExternalNullifier frontend.Variable `gnark:",public"`
 
-// 	calculate_identity_commitment := api.DefineGadget("CalculateIdentityCommitment", 1, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-// 		// Dummy hash. Real circuit uses Poseidon
-// 		r := api.Mul(args[0], args[0])
-// 		return []frontend.Variable{r}
-// 	})
+	// Outputs to check
+	NullifierHash frontend.Variable `gnark:",public"`
+	MTRoot        frontend.Variable `gnark:",public"`
 
-// 	calculate_nullifier_hash := api.DefineGadget("CalculateNullifierHash", 2, func(api abstractor.API, args ...frontend.Variable) []frontend.Variable {
-// 		// Dummy hash. Real circuit uses Poseidon
-// 		r := api.Mul(args[0], args[1])
-// 		return []frontend.Variable{r}
-// 	})
+	// Working values
+	Levels int
+	Hashes []frontend.Variable `gnark:",public"`
+}
 
-// 	secret := calculate_secret.Call(circuit.IdentityNullifier, circuit.IdentityTrapdoor)[0]
-// 	identity_commitment := calculate_identity_commitment.Call(secret)[0]
-// 	nullifierHash := calculate_nullifier_hash.Call(circuit.ExternalNullifier, circuit.IdentityNullifier)[0]
-// 	api.AssertIsEqual(nullifierHash, circuit.NullifierHash) // Verify
+func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
+	// From https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom
+	calculate_secret := api.DefineGadget(&CalculateSecret{})
 
-// 	circuit.Hashes[0] = identity_commitment
-// 	for i := 0; i < circuit.Levels; i++ {
-// 		// Unrolled merkle_tree_inclusion_proof
-// 		api.AssertIsBoolean(circuit.TreePathIndices[i])
-// 		leftHash := api.Mul(circuit.Hashes[i], circuit.TreeSiblings[i]) // Dummy hash. Real circuit uses Poseidon
-// 		rightHash := api.Mul(circuit.TreeSiblings[i], circuit.Hashes[i]) // Dummy hash. Real circuit uses Poseidon
-// 		circuit.Hashes[i+1] = api.Select(circuit.TreePathIndices[i], rightHash, leftHash)
-// 	}
-// 	root := circuit.Hashes[circuit.Levels]
-// 	api.AssertIsEqual(root, circuit.MTRoot) // Verify
-// 	api.Mul(circuit.SignalHash, circuit.SignalHash)
+	calculate_identity_commitment := api.DefineGadget(&CalculateIdentityCommitment{})
 
-// 	return nil
-// }
+	calculate_nullifier_hash := api.DefineGadget(&CalculateNullifierHash{})
 
-// func (circuit Semaphore) Define(api frontend.API) error {
-// 	return abstractor.Concretize(api, &circuit)
-// }
+	secret := calculate_secret.Call(CalculateSecret{circuit.IdentityNullifier, circuit.IdentityTrapdoor})[0]
+	identity_commitment := calculate_identity_commitment.Call(CalculateIdentityCommitment{secret})[0]
+	nullifierHash := calculate_nullifier_hash.Call(CalculateNullifierHash{circuit.ExternalNullifier, circuit.IdentityNullifier})[0]
+	api.AssertIsEqual(nullifierHash, circuit.NullifierHash) // Verify
 
-// func TestSemaphore(t *testing.T) {
-// 	nLevels := 3
-// 	assignment := Semaphore{
-// 		Levels:          nLevels,
-// 		TreePathIndices: make([]frontend.Variable, nLevels),
-// 		TreeSiblings:    make([]frontend.Variable, nLevels),
-// 		Hashes:          make([]frontend.Variable, nLevels+1),
-// 	}
-// 	assert.Equal(t, len(assignment.TreePathIndices), len(assignment.TreeSiblings), "TreePathIndices and TreeSiblings must have the same length.")
-// 	assert.Equal(t, len(assignment.TreePathIndices)+1, len(assignment.Hashes), "Hashes array has length +1.")
-// 	err := CircuitToLean(&assignment, ecc.BW6_756)
-// 	if err != nil {
-// 		fmt.Println("CircuitToLean error!")
-// 		fmt.Println(err.Error())
-// 	}
-// }
+	circuit.Hashes[0] = identity_commitment
+	for i := 0; i < circuit.Levels; i++ {
+		// Unrolled merkle_tree_inclusion_proof
+		api.AssertIsBoolean(circuit.TreePathIndices[i])
+		leftHash := api.Mul(circuit.Hashes[i], circuit.TreeSiblings[i]) // Dummy hash. Real circuit uses Poseidon
+		rightHash := api.Mul(circuit.TreeSiblings[i], circuit.Hashes[i]) // Dummy hash. Real circuit uses Poseidon
+		circuit.Hashes[i+1] = api.Select(circuit.TreePathIndices[i], rightHash, leftHash)
+	}
+	root := circuit.Hashes[circuit.Levels]
+	api.AssertIsEqual(root, circuit.MTRoot) // Verify
+	api.Mul(circuit.SignalHash, circuit.SignalHash)
+
+	return nil
+}
+
+func (circuit Semaphore) Define(api frontend.API) error {
+	return abstractor.Concretize(api, &circuit)
+}
+
+func TestSemaphore(t *testing.T) {
+	nLevels := 3
+	assignment := Semaphore{
+		Levels:          nLevels,
+		TreePathIndices: make([]frontend.Variable, nLevels),
+		TreeSiblings:    make([]frontend.Variable, nLevels),
+		Hashes:          make([]frontend.Variable, nLevels+1),
+	}
+	assert.Equal(t, len(assignment.TreePathIndices), len(assignment.TreeSiblings), "TreePathIndices and TreeSiblings must have the same length.")
+	assert.Equal(t, len(assignment.TreePathIndices)+1, len(assignment.Hashes), "Hashes array has length +1.")
+	err := CircuitToLean(&assignment, ecc.BW6_756)
+	if err != nil {
+		fmt.Println("CircuitToLean error!")
+		fmt.Println(err.Error())
+	}
+}
 
 // Example: circuit with constant parameter
 type SliceGadget struct {
