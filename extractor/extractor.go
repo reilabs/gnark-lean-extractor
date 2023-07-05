@@ -344,7 +344,7 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 
 	oldCode := ce.Code
 	ce.Code = make([]App, 0)
-	outputs := gadget.GadgetDefine(ce)
+	outputs := gadget.DefineGadget(ce)
 	newCode := ce.Code
 	ce.Code = oldCode
 	exGadget := ExGadget{

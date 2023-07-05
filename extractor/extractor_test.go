@@ -15,7 +15,7 @@ type SliceGadget struct {
 	In_2 []frontend.Variable
 }
 
-func (gadget SliceGadget) GadgetDefine(api abstractor.API) []frontend.Variable {
+func (gadget SliceGadget) DefineGadget(api abstractor.API) []frontend.Variable {
 	for i := 0; i < len(gadget.In_1); i++ {
 		api.Mul(gadget.In_1[i], gadget.In_2[i])
 	}
@@ -77,7 +77,7 @@ type DummyHash struct {
 	In_2 frontend.Variable
 }
 
-func (gadget DummyHash) GadgetDefine(api abstractor.API) []frontend.Variable {
+func (gadget DummyHash) DefineGadget(api abstractor.API) []frontend.Variable {
 	r := api.Mul(gadget.In_1, gadget.In_2)
 	return []frontend.Variable{r}
 }
@@ -122,7 +122,7 @@ type MyWidget struct {
 	Test_2 frontend.Variable
 }
 
-func (gadget MyWidget) GadgetDefine(api abstractor.API) []frontend.Variable {
+func (gadget MyWidget) DefineGadget(api abstractor.API) []frontend.Variable {
 	sum := api.Add(gadget.Test_1, gadget.Test_2)
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
 	r := api.Div(sum, mul)
@@ -134,7 +134,7 @@ type MySecondWidget struct {
 	Test_2 frontend.Variable
 }
 
-func (gadget MySecondWidget) GadgetDefine(api abstractor.API) []frontend.Variable {
+func (gadget MySecondWidget) DefineGadget(api abstractor.API) []frontend.Variable {
 	my_widget := api.DefineGadget(&MyWidget{})
 
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)

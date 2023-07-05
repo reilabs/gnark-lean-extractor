@@ -11,7 +11,7 @@ type ConcreteGadget struct {
 }
 
 func (g *ConcreteGadget) Call(gadget GadgetDefinition) []frontend.Variable {
-	return gadget.GadgetDefine(g.api)
+	return gadget.DefineGadget(g.api)
 }
 
 type Concretizer struct {

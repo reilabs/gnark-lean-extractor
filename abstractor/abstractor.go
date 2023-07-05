@@ -7,7 +7,7 @@ type Gadget interface {
 }
 
 type GadgetDefinition interface {
-	GadgetDefine(api API) []frontend.Variable
+	DefineGadget(api API) []frontend.Variable
 }
 
 type API interface {
