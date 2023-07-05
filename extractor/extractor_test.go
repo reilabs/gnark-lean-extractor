@@ -61,9 +61,7 @@ type Semaphore struct {
 func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 	// From https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom
 	calculate_secret := api.DefineGadget(&CalculateSecret{})
-
 	calculate_identity_commitment := api.DefineGadget(&CalculateIdentityCommitment{})
-
 	calculate_nullifier_hash := api.DefineGadget(&CalculateNullifierHash{})
 
 	secret := calculate_secret.Call(CalculateSecret{circuit.IdentityNullifier, circuit.IdentityTrapdoor})[0]
