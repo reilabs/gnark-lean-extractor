@@ -321,6 +321,15 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
+func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
+	for _, gadget := range gadgets {
+		if gadget.Name == name {
+			return &gadget
+		}
+	}
+	return nil
+}
+
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
 	schema, _ := GetSchema(gadget)
 	CircuitInit(gadget, schema)
@@ -328,7 +337,6 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	// for arity because each array element is considered
 	// a parameter
 	arity := len(schema.Fields)
-	name := reflect.TypeOf(gadget).Elem().Name()
 	args := GetExArgs(gadget, schema.Fields)
 
 	// To distinguish between gadgets instantiated with different array
@@ -341,6 +349,12 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 			suffix += fmt.Sprintf("_%d", a.Type.Size)
 		}
 	}
+	name := fmt.Sprintf("%s%s", reflect.TypeOf(gadget).Elem().Name(), suffix)
+
+	ptr_gadget := getGadgetByName(ce.Gadgets, name)
+	if ptr_gadget != nil {
+		return ptr_gadget
+	}
 
 	oldCode := ce.Code
 	ce.Code = make([]App, 0)
@@ -348,7 +362,7 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	newCode := ce.Code
 	ce.Code = oldCode
 	exGadget := ExGadget{
-		Name:      fmt.Sprintf("%s%s", name, suffix),
+		Name:      name,
 		Arity:     arity,
 		Code:      newCode,
 		Outputs:   sanitizeVars(outputs...),

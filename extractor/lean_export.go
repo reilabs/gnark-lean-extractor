@@ -184,6 +184,8 @@ func extractBaseArg(arg Operand) Operand {
 	switch arg.(type) {
 	case Proj:
 		return extractBaseArg(arg.(Proj).Operand)
+	case ProjArray:
+		return extractBaseArg(arg.(ProjArray).Proj[0])
 	default:
 		return arg
 	}
