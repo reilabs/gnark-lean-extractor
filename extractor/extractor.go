@@ -321,7 +321,7 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
-func isGadgetAlreadyDefined(gadgets []ExGadget, name string) abstractor.Gadget {
+func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	for _, gadget := range gadgets {
 		if gadget.Name == name {
 			return &gadget
@@ -351,7 +351,7 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	}
 	name := fmt.Sprintf("%s%s", reflect.TypeOf(gadget).Elem().Name(), suffix)
 
-	ptr_gadget := isGadgetAlreadyDefined(ce.Gadgets, name)
+	ptr_gadget := getGadgetByName(ce.Gadgets, name)
 	if ptr_gadget != nil {
 		return ptr_gadget
 	}
