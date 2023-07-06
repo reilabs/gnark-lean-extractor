@@ -11,15 +11,22 @@ import (
 )
 
 // Example: Semaphore circuit
-type DummyPoseidon struct {
-	In []frontend.Variable
+type DummyPoseidon2 struct {
+	In_1 frontend.Variable
+	In_2 frontend.Variable
 }
 
-func (gadget DummyPoseidon) DefineGadget(api abstractor.API) []frontend.Variable {
-	hash := gadget.In[0]
-	for i := 0; i < len(gadget.In); i++ {
-		hash = api.Mul(hash, gadget.In[i])
-	}
+func (gadget DummyPoseidon2) DefineGadget(api abstractor.API) []frontend.Variable {
+	hash := api.Mul(gadget.In_1, gadget.In_2)
+	return []frontend.Variable{hash}
+}
+
+type DummyPoseidon1 struct {
+	In frontend.Variable
+}
+
+func (gadget DummyPoseidon1) DefineGadget(api abstractor.API) []frontend.Variable {
+	hash := api.Mul(gadget.In, gadget.In)
 	return []frontend.Variable{hash}
 }
 
@@ -30,7 +37,7 @@ type MerkleTreeInclusionProof struct {
 }
 
 func (gadget MerkleTreeInclusionProof) DefineGadget(api abstractor.API) []frontend.Variable {
-	dummy_poseidon := api.DefineGadget(&DummyPoseidon{make([]frontend.Variable, 2)})
+	dummy_poseidon := api.DefineGadget(&DummyPoseidon2{})
 
 	levels := len(gadget.PathIndices)
 	hashes := make([]frontend.Variable, levels+1)
@@ -39,8 +46,8 @@ func (gadget MerkleTreeInclusionProof) DefineGadget(api abstractor.API) []fronte
 	for i := 0; i < levels; i++ {
 		// Unrolled merkle_tree_inclusion_proof
 		api.AssertIsBoolean(gadget.PathIndices[i])
-		leftHash := dummy_poseidon.Call(DummyPoseidon{[]frontend.Variable{hashes[i], gadget.Siblings[i]}})[0]
-		rightHash := dummy_poseidon.Call(DummyPoseidon{[]frontend.Variable{gadget.Siblings[i], hashes[i]}})[0]
+		leftHash := dummy_poseidon.Call(DummyPoseidon2{hashes[i], gadget.Siblings[i]})[0]
+		rightHash := dummy_poseidon.Call(DummyPoseidon2{gadget.Siblings[i], hashes[i]})[0]
 		hashes[i+1] = api.Select(gadget.PathIndices[i], rightHash, leftHash)
 	}
 	root := hashes[levels]
@@ -66,16 +73,16 @@ type Semaphore struct {
 
 func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 	// From https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom
-	dummy_poseidon_1 := api.DefineGadget(&DummyPoseidon{make([]frontend.Variable, 1)})
-	dummy_poseidon_2 := api.DefineGadget(&DummyPoseidon{make([]frontend.Variable, 2)})
+	dummy_poseidon_1 := api.DefineGadget(&DummyPoseidon1{})
+	dummy_poseidon_2 := api.DefineGadget(&DummyPoseidon2{})
 	merkle_tree_inclusion_proof := api.DefineGadget(&MerkleTreeInclusionProof{
 		PathIndices: make([]frontend.Variable, circuit.Levels),
 		Siblings:    make([]frontend.Variable, circuit.Levels),
 	})
 
-	secret := dummy_poseidon_2.Call(DummyPoseidon{[]frontend.Variable{circuit.IdentityNullifier, circuit.IdentityTrapdoor}})[0]
-	identity_commitment := dummy_poseidon_1.Call(DummyPoseidon{[]frontend.Variable{secret}})[0]
-	nullifierHash := dummy_poseidon_2.Call(DummyPoseidon{[]frontend.Variable{circuit.ExternalNullifier, circuit.IdentityNullifier}})[0]
+	secret := dummy_poseidon_2.Call(DummyPoseidon2{circuit.IdentityNullifier, circuit.IdentityTrapdoor})[0]
+	identity_commitment := dummy_poseidon_1.Call(DummyPoseidon1{secret})[0]
+	nullifierHash := dummy_poseidon_2.Call(DummyPoseidon2{circuit.ExternalNullifier, circuit.IdentityNullifier})[0]
 	api.AssertIsEqual(nullifierHash, circuit.NullifierHash) // Verify
 
 	root := merkle_tree_inclusion_proof.Call(MerkleTreeInclusionProof{
