@@ -63,7 +63,7 @@ type Semaphore struct {
 
 func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 	// From https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom
-	dummy_poseidon_1 := api.DefineGadget(&Poseidon{})
+	dummy_poseidon_1 := api.DefineGadget(&DummyPoseidon1{})
 	dummy_poseidon_2 := api.DefineGadget(&Poseidon{})
 	merkle_tree_inclusion_proof := api.DefineGadget(&MerkleTreeInclusionProof{
 		PathIndices: make([]frontend.Variable, circuit.Levels),

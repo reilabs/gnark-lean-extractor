@@ -319,18 +319,18 @@ func (g Poseidon) DefineGadget(api abstractor.API) []frontend.Variable {
 }
 
 type sbox struct {
-	inp frontend.Variable
+	Inp frontend.Variable
 }
 
 func (s sbox) DefineGadget(api abstractor.API) []frontend.Variable {
-	v2 := api.Mul(s.inp, s.inp)
+	v2 := api.Mul(s.Inp, s.Inp)
 	v4 := api.Mul(v2, v2)
-	r := api.Mul(s.inp, v4)
+	r := api.Mul(s.Inp, v4)
 	return []frontend.Variable{r}
 }
 
 type mds struct {
-	inp [3]frontend.Variable
+	Inp [3]frontend.Variable
 }
 
 func (m mds) DefineGadget(api abstractor.API) []frontend.Variable {
@@ -338,7 +338,7 @@ func (m mds) DefineGadget(api abstractor.API) []frontend.Variable {
 	for i := 0; i < 3; i += 1 {
 		var sum frontend.Variable = 0
 		for j := 0; j < 3; j += 1 {
-			sum = api.Add(sum, api.Mul(m.inp[j], MDS[i][j]))
+			sum = api.Add(sum, api.Mul(m.Inp[j], MDS[i][j]))
 		}
 		mds[i] = sum
 	}
@@ -346,33 +346,33 @@ func (m mds) DefineGadget(api abstractor.API) []frontend.Variable {
 }
 
 type halfRound struct {
-	inp    [3]frontend.Variable
-	consts [3]frontend.Variable
+	Inp    [3]frontend.Variable
+	Consts [3]frontend.Variable
 }
 
 func (h halfRound) DefineGadget(api abstractor.API) []frontend.Variable {
 	sboxG := api.DefineGadget(&sbox{})
 	mdsG := api.DefineGadget(&mds{})
 	for i := 0; i < 3; i += 1 {
-		h.inp[i] = api.Add(h.inp[i], h.consts[i])
+		h.Inp[i] = api.Add(h.Inp[i], h.Consts[i])
 	}
-	h.inp[0] = sboxG.Call(sbox{h.inp[0]})[0]
-	return mdsG.Call(mds{h.inp})
+	h.Inp[0] = sboxG.Call(sbox{h.Inp[0]})[0]
+	return mdsG.Call(mds{h.Inp})
 }
 
 type fullRound struct {
-	inp    [3]frontend.Variable
-	consts [3]frontend.Variable
+	Inp    [3]frontend.Variable
+	Consts [3]frontend.Variable
 }
 
 func (h fullRound) DefineGadget(api abstractor.API) []frontend.Variable {
 	sboxG := api.DefineGadget(&sbox{})
-	mdsG := api.DefineGadget(mds{})
+	mdsG := api.DefineGadget(&mds{})
 	for i := 0; i < 3; i += 1 {
-		h.inp[i] = api.Add(h.inp[i], h.consts[i])
+		h.Inp[i] = api.Add(h.Inp[i], h.Consts[i])
 	}
 	for i := 0; i < 3; i += 1 {
-		h.inp[i] = sboxG.Call(sbox{h.inp[i]})[0]
+		h.Inp[i] = sboxG.Call(sbox{h.Inp[i]})[0]
 	}
-	return mdsG.Call(mds{h.inp})
+	return mdsG.Call(mds{h.Inp})
 }
