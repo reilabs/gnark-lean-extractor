@@ -180,14 +180,18 @@ func genArgs(inAssignment []ExArg) string {
 	return strings.Join(args, " ")
 }
 
-func extractBaseArg(arg Operand) Operand {
+func extractGateVars(arg Operand) []Operand {
 	switch arg.(type) {
 	case Proj:
-		return extractBaseArg(arg.(Proj).Operand)
+		return extractGateVars(arg.(Proj).Operand)
 	case ProjArray:
-		return extractBaseArg(arg.(ProjArray).Proj[0])
+		res := []Operand{}
+		for i := range arg.(ProjArray).Proj {
+			res = append(res, extractGateVars(arg.(ProjArray).Proj[i])...)
+		}
+		return res
 	default:
-		return arg
+		return []Operand{arg}
 	}
 }
 
@@ -195,26 +199,31 @@ func assignGateVars(code []App, additional ...Operand) []string {
 	gateVars := make([]string, len(code))
 	for _, app := range code {
 		for _, arg := range app.Args {
-			base := extractBaseArg(arg)
-			switch base.(type) {
+			bases := extractGateVars(arg)
+			for _, base := range bases {
+				switch base.(type) {
+				case Gate:
+					ix := base.(Gate).Index
+					if gateVars[ix] == "" {
+						gateVars[ix] = fmt.Sprintf("gate_%d", ix)
+					}
+				}
+			}
+		}
+	}
+	for _, out := range additional {
+		outBases := extractGateVars(out)
+		for _, outBase := range outBases {
+			switch outBase.(type) {
 			case Gate:
-				ix := base.(Gate).Index
+				ix := outBase.(Gate).Index
 				if gateVars[ix] == "" {
 					gateVars[ix] = fmt.Sprintf("gate_%d", ix)
 				}
 			}
 		}
 	}
-	for _, out := range additional {
-		outBase := extractBaseArg(out)
-		switch outBase.(type) {
-		case Gate:
-			ix := outBase.(Gate).Index
-			if gateVars[ix] == "" {
-				gateVars[ix] = fmt.Sprintf("gate_%d", ix)
-			}
-		}
-	}
+
 	return gateVars
 }
 
