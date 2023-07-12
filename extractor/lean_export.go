@@ -14,7 +14,7 @@ import (
 func ExportGadget(gadget ExGadget) string {
 	kArgsType := "F"
 	if len(gadget.Outputs) > 1 {
-		kArgsType = fmt.Sprintf("Vect F %d", len(gadget.Outputs))
+		kArgsType = fmt.Sprintf("Vector F %d", len(gadget.Outputs))
 	}
 	inAssignment := gadget.Args
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
