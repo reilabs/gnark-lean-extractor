@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"fmt"
+	"github.com/consensys/gnark/frontend/cs/r1cs"
 	"gnark-extractor/abstractor"
 	"testing"
 
@@ -9,17 +10,6 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/stretchr/testify/assert"
 )
-
-// Example: Semaphore circuit
-type DummyPoseidon2 struct {
-	In_1 frontend.Variable
-	In_2 frontend.Variable
-}
-
-func (gadget DummyPoseidon2) DefineGadget(api abstractor.API) []frontend.Variable {
-	hash := api.Mul(gadget.In_1, gadget.In_2)
-	return []frontend.Variable{hash}
-}
 
 type DummyPoseidon1 struct {
 	In frontend.Variable
@@ -37,7 +27,7 @@ type MerkleTreeInclusionProof struct {
 }
 
 func (gadget MerkleTreeInclusionProof) DefineGadget(api abstractor.API) []frontend.Variable {
-	dummy_poseidon := api.DefineGadget(&DummyPoseidon2{})
+	dummy_poseidon := api.DefineGadget(&Poseidon{})
 
 	levels := len(gadget.PathIndices)
 	hashes := make([]frontend.Variable, levels+1)
@@ -46,8 +36,8 @@ func (gadget MerkleTreeInclusionProof) DefineGadget(api abstractor.API) []fronte
 	for i := 0; i < levels; i++ {
 		// Unrolled merkle_tree_inclusion_proof
 		api.AssertIsBoolean(gadget.PathIndices[i])
-		leftHash := dummy_poseidon.Call(DummyPoseidon2{hashes[i], gadget.Siblings[i]})[0]
-		rightHash := dummy_poseidon.Call(DummyPoseidon2{gadget.Siblings[i], hashes[i]})[0]
+		leftHash := dummy_poseidon.Call(Poseidon{hashes[i], gadget.Siblings[i]})[0]
+		rightHash := dummy_poseidon.Call(Poseidon{gadget.Siblings[i], hashes[i]})[0]
 		hashes[i+1] = api.Select(gadget.PathIndices[i], rightHash, leftHash)
 	}
 	root := hashes[levels]
@@ -73,16 +63,16 @@ type Semaphore struct {
 
 func (circuit *Semaphore) AbsDefine(api abstractor.API) error {
 	// From https://github.com/semaphore-protocol/semaphore/blob/main/packages/circuits/semaphore.circom
-	dummy_poseidon_1 := api.DefineGadget(&DummyPoseidon1{})
-	dummy_poseidon_2 := api.DefineGadget(&DummyPoseidon2{})
+	dummy_poseidon_1 := api.DefineGadget(&Poseidon{})
+	dummy_poseidon_2 := api.DefineGadget(&Poseidon{})
 	merkle_tree_inclusion_proof := api.DefineGadget(&MerkleTreeInclusionProof{
 		PathIndices: make([]frontend.Variable, circuit.Levels),
 		Siblings:    make([]frontend.Variable, circuit.Levels),
 	})
 
-	secret := dummy_poseidon_2.Call(DummyPoseidon2{circuit.IdentityNullifier, circuit.IdentityTrapdoor})[0]
+	secret := dummy_poseidon_2.Call(Poseidon{circuit.IdentityNullifier, circuit.IdentityTrapdoor})[0]
 	identity_commitment := dummy_poseidon_1.Call(DummyPoseidon1{secret})[0]
-	nullifierHash := dummy_poseidon_2.Call(DummyPoseidon2{circuit.ExternalNullifier, circuit.IdentityNullifier})[0]
+	nullifierHash := dummy_poseidon_2.Call(Poseidon{circuit.ExternalNullifier, circuit.IdentityNullifier})[0]
 	api.AssertIsEqual(nullifierHash, circuit.NullifierHash) // Verify
 
 	root := merkle_tree_inclusion_proof.Call(MerkleTreeInclusionProof{
@@ -114,6 +104,14 @@ func TestSemaphore(t *testing.T) {
 		fmt.Println("CircuitToLean error!")
 		fmt.Println(err.Error())
 	}
+	ccs, err := frontend.Compile(ecc.BN254.ScalarField(), r1cs.NewBuilder, &assignment)
+	if err != nil {
+		fmt.Println("Compile error!")
+		fmt.Println(err.Error())
+	}
+	fmt.Println(ccs.GetNbCoefficients())
+	fmt.Println(ccs.GetNbConstraints())
+
 }
 
 // Example: circuit with constant parameter
@@ -199,12 +197,12 @@ type MerkleRecover struct {
 }
 
 func (circuit *MerkleRecover) AbsDefine(api abstractor.API) error {
-	hash := api.DefineGadget(&DummyHash{})
+	hash := api.DefineGadget(&Poseidon{})
 
 	current := circuit.Element
 	for i := 0; i < len(circuit.Path); i++ {
-		leftHash := hash.Call(DummyHash{current, circuit.Proof[i]})[0]
-		rightHash := hash.Call(DummyHash{circuit.Proof[i], current})[0]
+		leftHash := hash.Call(Poseidon{current, circuit.Proof[i]})[0]
+		rightHash := hash.Call(Poseidon{circuit.Proof[i], current})[0]
 		current = api.Select(circuit.Path[i], rightHash, leftHash)
 	}
 	api.AssertIsEqual(current, circuit.Root)
