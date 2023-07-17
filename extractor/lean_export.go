@@ -29,7 +29,7 @@ abbrev F := ZMod Order
 
 set_option maxHeartbeats 0
 	`
-	return fmt.Sprintf("%s",s)
+	return fmt.Sprintf("%s", s)
 }
 
 func ExportGadget(gadget ExGadget) string {
