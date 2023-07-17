@@ -2,14 +2,35 @@ package extractor
 
 import (
 	"fmt"
-	"gnark-extractor/abstractor"
 	"reflect"
 	"strings"
+
+	"github.com/reilabs/gnark-extractor/abstractor"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
 )
+
+func ExportPrelude() string {
+	// Order could be extracted from circuit curve
+	s := `
+import Mathlib
+
+import ProvenZk.Binary
+import ProvenZk.Gates
+import ProvenZk.Hash
+import ProvenZk.Merkle
+import ProvenZk.VectorExtensions
+
+def Order : ℕ := 21888242871839275222246405745257275088548364400416034343698204186575808495617
+variable [Fact (Nat.Prime Order)]
+abbrev F := ZMod Order
+
+set_option maxHeartbeats 0
+	`
+	return fmt.Sprintf("%s",s)
+}
 
 func ExportGadget(gadget ExGadget) string {
 	kArgsType := "F"
@@ -26,7 +47,8 @@ func ExportCircuit(circuit ExCircuit) string {
 		gadgets[i] = ExportGadget(gadget)
 	}
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
-	return fmt.Sprintf("%s\n\n%s", strings.Join(gadgets, "\n\n"), circ)
+	prelude := ExportPrelude()
+	return fmt.Sprintf("%s\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ)
 }
 
 func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
