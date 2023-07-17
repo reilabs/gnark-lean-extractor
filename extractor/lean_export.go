@@ -14,8 +14,7 @@ import (
 
 func ExportPrelude() string {
 	// Order could be extracted from circuit curve
-	s := `
-import Mathlib
+	s := `import Mathlib
 
 import ProvenZk.Binary
 import ProvenZk.Gates
