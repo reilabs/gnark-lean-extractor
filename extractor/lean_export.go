@@ -26,8 +26,13 @@ def Order : ℕ := 2188824287183927522224640574525727508854836440041603434369820
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
 
-set_option maxHeartbeats 0
+namespace Circuit
 	`
+	return fmt.Sprintf("%s", s)
+}
+
+func ExportFooter() string {
+	s := `end Circuit`
 	return fmt.Sprintf("%s", s)
 }
 
@@ -47,7 +52,8 @@ func ExportCircuit(circuit ExCircuit) string {
 	}
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
 	prelude := ExportPrelude()
-	return fmt.Sprintf("%s\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ)
+	footer := ExportFooter()
+	return fmt.Sprintf("%s\n%s\n\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ, footer)
 }
 
 func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
