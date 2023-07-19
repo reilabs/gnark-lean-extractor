@@ -152,10 +152,10 @@ func GetSchema(circuit any) (*schema.Schema, error) {
 	return schema.New(circuit, tVariable)
 }
 
-func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
+func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	schema, err := GetSchema(circuit)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = CircuitInit(circuit, schema)
@@ -172,7 +172,7 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
 
 	err = circuit.AbsDefine(&api)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	extractorCircuit := ExCircuit{
@@ -180,9 +180,8 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 	}
-	fmt.Println(ExportCircuit(extractorCircuit))
-
-	return nil
+	out := ExportCircuit(extractorCircuit)
+	return out, nil
 }
 
 func genNestedArrays(a ExArgType) string {

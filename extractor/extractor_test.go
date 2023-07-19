@@ -68,11 +68,12 @@ func TestCircuitWithParameter(t *testing.T) {
 	assignment := CircuitWithParameter{Path: make([]frontend.Variable, 3), Tree: make([]frontend.Variable, 2)}
 	assignment.Param = paramValue
 	assert.Equal(t, assignment.Param, paramValue, "assignment.Param is a const and should be 20.")
-	err := CircuitToLean(&assignment, ecc.BW6_756)
+	out, err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
 		fmt.Println(err.Error())
 	}
+	fmt.Println(out)
 }
 
 // Example: circuit with arrays and gadget
@@ -113,11 +114,12 @@ func (circuit MerkleRecover) Define(api frontend.API) error {
 
 func TestMerkleRecover(t *testing.T) {
 	assignment := MerkleRecover{}
-	err := CircuitToLean(&assignment, ecc.BW6_756)
+	out, err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
 		fmt.Println(err.Error())
 	}
+	fmt.Println(out)
 }
 
 // Example: circuit with multiple gadgets
@@ -168,9 +170,10 @@ func (circuit TwoGadgets) Define(api frontend.API) error {
 
 func TestTwoGadgets(t *testing.T) {
 	assignment := TwoGadgets{}
-	err := CircuitToLean(&assignment, ecc.BW6_756)
+	out, err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
 		fmt.Println("CircuitToLean error!")
 		fmt.Println(err.Error())
 	}
+	fmt.Println(out)
 }
