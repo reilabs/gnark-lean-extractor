@@ -6,9 +6,7 @@ Implement the methods `AbsDefine` and `Define` for `MyCircuit` struct. Choose a 
 assignment := MyCircuit{}
 out, err := CircuitToLean(&assignment, ecc.BW6_756)
 if err != nil {
-    fmt.Println("CircuitToLean error!")
-    fmt.Println(err.Error())
-    return
+    log.Fatal(err)
 }
 fmt.Println(out)
 ```

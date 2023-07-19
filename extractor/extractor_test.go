@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"fmt"
+	"log"
 	"testing"
 
 	"github.com/reilabs/gnark-extractor/abstractor"
@@ -70,8 +71,7 @@ func TestCircuitWithParameter(t *testing.T) {
 	assert.Equal(t, assignment.Param, paramValue, "assignment.Param is a const and should be 20.")
 	out, err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
-		fmt.Println("CircuitToLean error!")
-		fmt.Println(err.Error())
+		log.Fatal(err)
 	}
 	fmt.Println(out)
 }
@@ -116,8 +116,7 @@ func TestMerkleRecover(t *testing.T) {
 	assignment := MerkleRecover{}
 	out, err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
-		fmt.Println("CircuitToLean error!")
-		fmt.Println(err.Error())
+		log.Fatal(err)
 	}
 	fmt.Println(out)
 }
@@ -172,8 +171,7 @@ func TestTwoGadgets(t *testing.T) {
 	assignment := TwoGadgets{}
 	out, err := CircuitToLean(&assignment, ecc.BW6_756)
 	if err != nil {
-		fmt.Println("CircuitToLean error!")
-		fmt.Println(err.Error())
+		log.Fatal(err)
 	}
 	fmt.Println(out)
 }
