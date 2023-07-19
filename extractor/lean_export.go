@@ -14,10 +14,7 @@ import (
 
 func ExportPrelude() string {
 	// Order could be extracted from circuit curve
-	s := `import ProvenZk.Binary
-import ProvenZk.Gates
-import ProvenZk.Hash
-import ProvenZk.Merkle
+	s := `import ProvenZk.Gates
 import ProvenZk.VectorExtensions
 
 def Order : ℕ := 21888242871839275222246405745257275088548364400416034343698204186575808495617
