@@ -4,7 +4,7 @@
 Implement the methods `AbsDefine` and `Define` for `MyCircuit` struct. Choose a curve to test the circuit on, then call the Lean extractor the following way:
 ```go
 assignment := MyCircuit{}
-out, err := CircuitToLean(&assignment, ecc.BW6_756)
+out, err := CircuitToLean(&assignment, ecc.BN254)
 if err != nil {
     log.Fatal(err)
 }
