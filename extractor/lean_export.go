@@ -18,9 +18,9 @@ import ProvenZk.VectorExtensions
 
 namespace %s
 
-def Order : ℕ := %s
+def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
-abbrev F := ZMod Order`, circuit.Name, circuit.Field.ScalarField())
+abbrev F := ZMod Order`, circuit.Name, circuit.Field.ScalarField().Text(16))
 
 	return s
 }
