@@ -105,6 +105,16 @@ type ExGadget struct {
 
 func (g *ExGadget) isOp() {}
 
+func ArrayToSlice(v reflect.Value) []frontend.Variable {
+	res := make([]frontend.Variable, v.Len())
+
+	for i := 0; i < v.Len(); i++ {
+		res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
+	}
+
+	return res
+}
+
 func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
 	args := []frontend.Variable{}
 
@@ -113,8 +123,12 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 	for i := 0; i < rt.NumField(); i++ {
 		fld := rt.Field(i)
 		v := rv.FieldByName(fld.Name)
-		if v.Kind() == reflect.Slice || v.Kind() == reflect.Array {
+		if v.Kind() == reflect.Slice {
 			args = append(args, v.Interface().([]frontend.Variable))
+		} else if  v.Kind() == reflect.Array {
+			// I can't convert from array to slice using Reflect because
+			// the field is unaddressable.
+			args = append(args, ArrayToSlice(v))
 		} else {
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
@@ -162,19 +176,6 @@ type CodeExtractor struct {
 	Field   ecc.ID
 }
 
-func operandFromArray(args []frontend.Variable) []Operand {
-	ops := make([]Operand, len(args))
-	for i, arg := range args {
-		switch arg.(type) {
-		case Input, Gate, Proj, Const:
-			ops[i] = arg.(Operand)
-		default:
-			ops[i] = arg.(Proj).Operand
-		}
-	}
-	return ops
-}
-
 func sanitizeVars(args ...frontend.Variable) []Operand {
 	ops := []Operand{}
 	for _, arg := range args {
@@ -187,7 +188,7 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 			casted := arg.(big.Int)
 			ops = append(ops, Const{&casted})
 		case []frontend.Variable:
-			opsArray := operandFromArray(arg.([]frontend.Variable))
+			opsArray := sanitizeVars(arg.([]frontend.Variable)...)
 			ops = append(ops, ProjArray{opsArray})
 		default:
 			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
@@ -339,6 +340,9 @@ func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 }
 
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
+    if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
+        panic("DefineGadget only takes pointers to the gadget")
+    }
 	schema, _ := GetSchema(gadget)
 	CircuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
