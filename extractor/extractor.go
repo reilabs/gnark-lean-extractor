@@ -132,6 +132,11 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 	return outs
 }
 
+func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
+	g := ce.DefineGadget(gadget)
+	return g.Call(gadget)
+}
+
 type ExArgType struct {
 	Size int
 	Type *ExArgType

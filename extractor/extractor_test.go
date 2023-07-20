@@ -35,15 +35,15 @@ type CircuitWithParameter struct {
 }
 
 func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
-	slice_3 := api.DefineGadget(&SliceGadget{
-		In_1: make([]frontend.Variable, 3),
-		In_2: make([]frontend.Variable, 3),
-	})
+	// slice_3 := api.DefineGadget(&SliceGadget{
+	// 	In_1: make([]frontend.Variable, 3),
+	// 	In_2: make([]frontend.Variable, 3),
+	// })
 
-	slice_2 := api.DefineGadget(&SliceGadget{
-		In_1: make([]frontend.Variable, 2),
-		In_2: make([]frontend.Variable, 2),
-	})
+	// slice_2 := api.DefineGadget(&SliceGadget{
+	// 	In_1: make([]frontend.Variable, 2),
+	// 	In_2: make([]frontend.Variable, 2),
+	// })
 
 	api.FromBinary(circuit.Path...)
 	bin := api.ToBinary(circuit.In)
@@ -51,10 +51,10 @@ func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
 
 	dec := api.FromBinary(bin...)
 	api.AssertIsEqual(circuit.Param, dec)
-	slice_3.Call(SliceGadget{circuit.Path, circuit.Path})
+	api.Call(&SliceGadget{circuit.Path, circuit.Path})
 
 	api.Mul(circuit.Path[0], circuit.Path[0])
-	slice_2.Call(SliceGadget{circuit.Tree, circuit.Tree})
+	api.Call(&SliceGadget{circuit.Tree, circuit.Tree})
 	api.AssertIsEqual(circuit.Param, circuit.In)
 
 	return nil
