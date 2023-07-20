@@ -12,18 +12,17 @@ import (
 	"github.com/consensys/gnark/frontend/schema"
 )
 
-func ExportPrelude() string {
-	// Order could be extracted from circuit curve
-	s := `import ProvenZk.Gates
+func ExportPrelude(field ecc.ID) string {
+	s := fmt.Sprintf(`import ProvenZk.Gates
 import ProvenZk.VectorExtensions
 
 namespace Circuit
 
-def Order : ℕ := 21888242871839275222246405745257275088548364400416034343698204186575808495617
+def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
-abbrev F := ZMod Order`
+abbrev F := ZMod Order`, field.ScalarField().Text(16))
 
-	return fmt.Sprintf("%s", s)
+	return s
 }
 
 func ExportFooter() string {
@@ -46,7 +45,7 @@ func ExportCircuit(circuit ExCircuit) string {
 		gadgets[i] = ExportGadget(gadget)
 	}
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
-	prelude := ExportPrelude()
+	prelude := ExportPrelude(circuit.Field)
 	footer := ExportFooter()
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ, footer)
 }
@@ -176,6 +175,7 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 		Inputs:  GetExArgs(circuit, schema.Fields),
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
+		Field:   api.Field,
 	}
 	out := ExportCircuit(extractorCircuit)
 	return out, nil
