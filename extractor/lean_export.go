@@ -12,22 +12,22 @@ import (
 	"github.com/consensys/gnark/frontend/schema"
 )
 
-func ExportPrelude(field ecc.ID) string {
+func ExportPrelude(circuit ExCircuit) string {
 	s := fmt.Sprintf(`import ProvenZk.Gates
 import ProvenZk.VectorExtensions
 
-namespace Circuit
+namespace %s
 
 def Order : ℕ := %s
 variable [Fact (Nat.Prime Order)]
-abbrev F := ZMod Order`, field.ScalarField())
+abbrev F := ZMod Order`, circuit.Name, circuit.Field.ScalarField())
 
 	return s
 }
 
-func ExportFooter() string {
-	s := `end Circuit`
-	return fmt.Sprintf("%s", s)
+func ExportFooter(circuit ExCircuit) string {
+	s := fmt.Sprintf(`end %s`, circuit.Name)
+	return s
 }
 
 func ExportGadget(gadget ExGadget) string {
@@ -45,8 +45,8 @@ func ExportCircuit(circuit ExCircuit) string {
 		gadgets[i] = ExportGadget(gadget)
 	}
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
-	prelude := ExportPrelude(circuit.Field)
-	footer := ExportFooter()
+	prelude := ExportPrelude(circuit)
+	footer := ExportFooter(circuit)
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ, footer)
 }
 
@@ -171,11 +171,14 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 		return "", err
 	}
 
+	name := reflect.TypeOf(circuit).Elem().Name()
+
 	extractorCircuit := ExCircuit{
 		Inputs:  GetExArgs(circuit, schema.Fields),
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 		Field:   api.Field,
+		Name:    name,
 	}
 	out := ExportCircuit(extractorCircuit)
 	return out, nil
