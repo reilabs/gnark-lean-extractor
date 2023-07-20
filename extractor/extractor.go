@@ -148,6 +148,7 @@ type ExCircuit struct {
 	Gadgets []ExGadget
 	Code    []App
 	Field   ecc.ID
+	Name    string
 }
 
 type CodeExtractor struct {
