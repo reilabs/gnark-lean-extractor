@@ -2,14 +2,34 @@ package extractor
 
 import (
 	"fmt"
-	"gnark-extractor/abstractor"
 	"reflect"
 	"strings"
+
+	"github.com/reilabs/gnark-extractor/abstractor"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
 )
+
+func ExportPrelude() string {
+	// Order could be extracted from circuit curve
+	s := `import ProvenZk.Gates
+import ProvenZk.VectorExtensions
+
+namespace Circuit
+
+def Order : ℕ := 21888242871839275222246405745257275088548364400416034343698204186575808495617
+variable [Fact (Nat.Prime Order)]
+abbrev F := ZMod Order`
+
+	return fmt.Sprintf("%s", s)
+}
+
+func ExportFooter() string {
+	s := `end Circuit`
+	return fmt.Sprintf("%s", s)
+}
 
 func ExportGadget(gadget ExGadget) string {
 	kArgsType := "F"
@@ -26,7 +46,9 @@ func ExportCircuit(circuit ExCircuit) string {
 		gadgets[i] = ExportGadget(gadget)
 	}
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
-	return fmt.Sprintf("%s\n\n%s", strings.Join(gadgets, "\n\n"), circ)
+	prelude := ExportPrelude()
+	footer := ExportFooter()
+	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ, footer)
 }
 
 func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
@@ -127,10 +149,10 @@ func GetSchema(circuit any) (*schema.Schema, error) {
 	return schema.New(circuit, tVariable)
 }
 
-func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
+func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	schema, err := GetSchema(circuit)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	err = CircuitInit(circuit, schema)
@@ -147,7 +169,7 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
 
 	err = circuit.AbsDefine(&api)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	extractorCircuit := ExCircuit{
@@ -155,9 +177,8 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) error {
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 	}
-	fmt.Println(ExportCircuit(extractorCircuit))
-
-	return nil
+	out := ExportCircuit(extractorCircuit)
+	return out, nil
 }
 
 func genNestedArrays(a ExArgType) string {

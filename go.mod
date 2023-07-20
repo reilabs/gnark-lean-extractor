@@ -1,4 +1,4 @@
-module gnark-extractor
+module github.com/reilabs/gnark-extractor
 
 go 1.20
 
