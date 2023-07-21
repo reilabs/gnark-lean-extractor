@@ -125,7 +125,7 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		v := rv.FieldByName(fld.Name)
 		if v.Kind() == reflect.Slice {
 			args = append(args, v.Interface().([]frontend.Variable))
-		} else if  v.Kind() == reflect.Array {
+		} else if v.Kind() == reflect.Array {
 			// I can't convert from array to slice using Reflect because
 			// the field is unaddressable.
 			args = append(args, ArrayToSlice(v))
@@ -344,9 +344,9 @@ func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 }
 
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
-    if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
-        panic("DefineGadget only takes pointers to the gadget")
-    }
+	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
+		panic("DefineGadget only takes pointers to the gadget")
+	}
 	schema, _ := GetSchema(gadget)
 	CircuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
