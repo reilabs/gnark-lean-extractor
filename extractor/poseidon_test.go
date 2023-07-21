@@ -300,19 +300,17 @@ type Poseidon struct {
 }
 
 func (g Poseidon) DefineGadget(api abstractor.API) []frontend.Variable {
-	halfRoundG := api.DefineGadget(&halfRound{})
-	fullRoundG := api.DefineGadget(&fullRound{})
 	state := [3]frontend.Variable{0, g.In1, g.In2}
 	for i := 0; i < 4; i += 1 {
-		r := fullRoundG.Call(fullRound{state, CONSTANTS[i]})
+		r := api.Call(fullRound{state, CONSTANTS[i]})
 		state = *(*[3]frontend.Variable)(r)
 	}
 	for i := 0; i < 57; i += 1 {
-		r := halfRoundG.Call(fullRound{state, CONSTANTS[4+i]})
+		r := api.Call(halfRound{state, CONSTANTS[4+i]})
 		state = *(*[3]frontend.Variable)(r)
 	}
 	for i := 0; i < 4; i += 1 {
-		r := fullRoundG.Call(fullRound{state, CONSTANTS[61+i]})
+		r := api.Call(fullRound{state, CONSTANTS[61+i]})
 		state = *(*[3]frontend.Variable)(r)
 	}
 	return []frontend.Variable{state[0]}
@@ -351,13 +349,11 @@ type halfRound struct {
 }
 
 func (h halfRound) DefineGadget(api abstractor.API) []frontend.Variable {
-	sboxG := api.DefineGadget(&sbox{})
-	mdsG := api.DefineGadget(&mds{})
 	for i := 0; i < 3; i += 1 {
 		h.Inp[i] = api.Add(h.Inp[i], h.Consts[i])
 	}
-	h.Inp[0] = sboxG.Call(sbox{h.Inp[0]})[0]
-	return mdsG.Call(mds{h.Inp})
+	h.Inp[0] = api.Call(sbox{h.Inp[0]})[0]
+	return api.Call(mds{h.Inp})
 }
 
 type fullRound struct {
@@ -366,13 +362,11 @@ type fullRound struct {
 }
 
 func (h fullRound) DefineGadget(api abstractor.API) []frontend.Variable {
-	sboxG := api.DefineGadget(&sbox{})
-	mdsG := api.DefineGadget(&mds{})
 	for i := 0; i < 3; i += 1 {
 		h.Inp[i] = api.Add(h.Inp[i], h.Consts[i])
 	}
 	for i := 0; i < 3; i += 1 {
-		h.Inp[i] = sboxG.Call(sbox{h.Inp[i]})[0]
+		h.Inp[i] = api.Call(sbox{h.Inp[i]})[0]
 	}
-	return mdsG.Call(mds{h.Inp})
+	return api.Call(mds{h.Inp})
 }
