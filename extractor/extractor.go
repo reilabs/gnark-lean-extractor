@@ -147,7 +147,11 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 }
 
 func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
-	g := ce.DefineGadget(gadget)
+	// Copying `gadget` because `DefineGadget` needs to manipulate the input
+	v := reflect.ValueOf(gadget)
+	tmp_gadget := reflect.New(v.Type())
+	tmp_gadget.Elem().Set(v)
+	g := ce.DefineGadget(tmp_gadget.Interface().(abstractor.GadgetDefinition))
 	return g.Call(gadget)
 }
 

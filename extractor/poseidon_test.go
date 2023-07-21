@@ -2,7 +2,7 @@ package extractor
 
 import (
 	"github.com/consensys/gnark/frontend"
-	"gnark-extractor/abstractor"
+	"github.com/reilabs/gnark-extractor/abstractor"
 	"math/big"
 )
 

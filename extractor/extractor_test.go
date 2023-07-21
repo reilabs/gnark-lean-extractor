@@ -35,26 +35,16 @@ type CircuitWithParameter struct {
 }
 
 func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
-	// slice_3 := api.DefineGadget(&SliceGadget{
-	// 	In_1: make([]frontend.Variable, 3),
-	// 	In_2: make([]frontend.Variable, 3),
-	// })
-
-	// slice_2 := api.DefineGadget(&SliceGadget{
-	// 	In_1: make([]frontend.Variable, 2),
-	// 	In_2: make([]frontend.Variable, 2),
-	// })
-
 	api.FromBinary(circuit.Path...)
 	bin := api.ToBinary(circuit.In)
 	bin = api.ToBinary(circuit.Param)
 
 	dec := api.FromBinary(bin...)
 	api.AssertIsEqual(circuit.Param, dec)
-	api.Call(&SliceGadget{circuit.Path, circuit.Path})
+	api.Call(SliceGadget{circuit.Path, circuit.Path})
 
 	api.Mul(circuit.Path[0], circuit.Path[0])
-	api.Call(&SliceGadget{circuit.Tree, circuit.Tree})
+	api.Call(SliceGadget{circuit.Tree, circuit.Tree})
 	api.AssertIsEqual(circuit.Param, circuit.In)
 
 	return nil
@@ -95,12 +85,10 @@ type MerkleRecover struct {
 }
 
 func (circuit *MerkleRecover) AbsDefine(api abstractor.API) error {
-	hash := api.DefineGadget(&DummyHash{})
-
 	current := circuit.Element
 	for i := 0; i < len(circuit.Path); i++ {
-		leftHash := hash.Call(DummyHash{current, circuit.Proof[i]})[0]
-		rightHash := hash.Call(DummyHash{circuit.Proof[i], current})[0]
+		leftHash := api.Call(DummyHash{current, circuit.Proof[i]})[0]
+		rightHash := api.Call(DummyHash{circuit.Proof[i], current})[0]
 		current = api.Select(circuit.Path[i], rightHash, leftHash)
 	}
 	api.AssertIsEqual(current, circuit.Root)
@@ -140,10 +128,8 @@ type MySecondWidget struct {
 }
 
 func (gadget MySecondWidget) DefineGadget(api abstractor.API) []frontend.Variable {
-	my_widget := api.DefineGadget(&MyWidget{})
-
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
-	snd := my_widget.Call(MyWidget{gadget.Test_1, gadget.Test_2})[0]
+	snd := api.Call(MyWidget{gadget.Test_1, gadget.Test_2})[0]
 	r := api.Mul(mul, snd)
 	return []frontend.Variable{r}
 }
@@ -154,11 +140,9 @@ type TwoGadgets struct {
 }
 
 func (circuit *TwoGadgets) AbsDefine(api abstractor.API) error {
-	my_snd_widget := api.DefineGadget(&MySecondWidget{})
-
 	sum := api.Add(circuit.In_1, circuit.In_2)
 	prod := api.Mul(circuit.In_1, circuit.In_2)
-	my_snd_widget.Call(MySecondWidget{sum, prod})
+	api.Call(MySecondWidget{sum, prod})
 
 	return nil
 }
