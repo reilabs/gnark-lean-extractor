@@ -13,6 +13,9 @@ type GadgetDefinition interface {
 type API interface {
 	frontend.API
 	DefineGadget(gadget GadgetDefinition) Gadget
+
+	frontend.API
+	Call(gadget GadgetDefinition) []frontend.Variable
 }
 
 type Circuit interface {

@@ -33,7 +33,7 @@ func ExportFooter(circuit ExCircuit) string {
 func ExportGadget(gadget ExGadget) string {
 	kArgsType := "F"
 	if len(gadget.Outputs) > 1 {
-		kArgsType = fmt.Sprintf("Vect F %d", len(gadget.Outputs))
+		kArgsType = fmt.Sprintf("Vector F %d", len(gadget.Outputs))
 	}
 	inAssignment := gadget.Args
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
@@ -84,6 +84,9 @@ func CircuitInit(class any, schema *schema.Schema) error {
 		temp.Set(v)
 	}
 
+	tmp_c := reflect.ValueOf(&class).Elem().Elem()
+	tmp := reflect.New(tmp_c.Type()).Elem()
+	tmp.Set(tmp_c)
 	for j, f := range schema.Fields {
 		field_name := f.Name
 		field := v.FieldByName(field_name)
@@ -91,21 +94,21 @@ func CircuitInit(class any, schema *schema.Schema) error {
 
 		// Can't assign an array to another array, therefore
 		// initialise each element in the array
-		if field_type.Kind() == reflect.Array || field_type.Kind() == reflect.Slice {
-			tmp_c := reflect.ValueOf(&class).Elem()
-			tmp := reflect.New(tmp_c.Elem().Type()).Elem()
-			tmp.Set(tmp_c.Elem())
+
+		if field_type.Kind() == reflect.Array {
 			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
-			tmp_c.Set(tmp)
+		} else if field_type.Kind() == reflect.Slice {
+			// Recreate a zeroed array to remove overlapping pointers if input
+			// arguments are duplicated (i.e. `api.Call(SliceGadget{circuit.Path, circuit.Path})`)
+			zero_array := make([]frontend.Variable, f.ArraySize, f.ArraySize)
+			tmp.Elem().FieldByName(field_name).Set(reflect.ValueOf(&zero_array).Elem())
+
+			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
 		} else if field_type.Kind() == reflect.Interface {
 			init := Input{j}
 			value := reflect.ValueOf(init)
 
-			tmp_c := reflect.ValueOf(&class).Elem()
-			tmp := reflect.New(tmp_c.Elem().Type()).Elem()
-			tmp.Set(tmp_c.Elem())
 			tmp.Elem().FieldByName(field_name).Set(value)
-			tmp_c.Set(tmp)
 		} else {
 			fmt.Printf("Skipped type %s\n", field_type.Kind())
 		}
@@ -204,14 +207,18 @@ func genArgs(inAssignment []ExArg) string {
 	return strings.Join(args, " ")
 }
 
-func extractBaseArg(arg Operand) Operand {
+func extractGateVars(arg Operand) []Operand {
 	switch arg.(type) {
 	case Proj:
-		return extractBaseArg(arg.(Proj).Operand)
+		return extractGateVars(arg.(Proj).Operand)
 	case ProjArray:
-		return extractBaseArg(arg.(ProjArray).Proj[0])
+		res := []Operand{}
+		for i := range arg.(ProjArray).Proj {
+			res = append(res, extractGateVars(arg.(ProjArray).Proj[i])...)
+		}
+		return res
 	default:
-		return arg
+		return []Operand{arg}
 	}
 }
 
@@ -219,26 +226,31 @@ func assignGateVars(code []App, additional ...Operand) []string {
 	gateVars := make([]string, len(code))
 	for _, app := range code {
 		for _, arg := range app.Args {
-			base := extractBaseArg(arg)
-			switch base.(type) {
+			bases := extractGateVars(arg)
+			for _, base := range bases {
+				switch base.(type) {
+				case Gate:
+					ix := base.(Gate).Index
+					if gateVars[ix] == "" {
+						gateVars[ix] = fmt.Sprintf("gate_%d", ix)
+					}
+				}
+			}
+		}
+	}
+	for _, out := range additional {
+		outBases := extractGateVars(out)
+		for _, outBase := range outBases {
+			switch outBase.(type) {
 			case Gate:
-				ix := base.(Gate).Index
+				ix := outBase.(Gate).Index
 				if gateVars[ix] == "" {
 					gateVars[ix] = fmt.Sprintf("gate_%d", ix)
 				}
 			}
 		}
 	}
-	for _, out := range additional {
-		outBase := extractBaseArg(out)
-		switch outBase.(type) {
-		case Gate:
-			ix := outBase.(Gate).Index
-			if gateVars[ix] == "" {
-				gateVars[ix] = fmt.Sprintf("gate_%d", ix)
-			}
-		}
-	}
+
 	return gateVars
 }
 
