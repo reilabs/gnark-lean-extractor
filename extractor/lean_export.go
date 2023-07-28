@@ -14,7 +14,7 @@ import (
 
 func ExportPrelude(circuit ExCircuit) string {
 	s := fmt.Sprintf(`import ProvenZk.Gates
-import ProvenZk.VectorExtensions
+import ProvenZk.Ext.Vector
 
 namespace %s
 
