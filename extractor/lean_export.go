@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/reilabs/gnark-extractor/abstractor"
+	"github.com/reilabs/gnark-lean-extractor/abstractor"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
