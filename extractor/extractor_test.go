@@ -12,6 +12,32 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Example: readme circuit
+type DummyCircuit struct {
+	In_1 frontend.Variable
+	In_2 frontend.Variable
+	Out  frontend.Variable
+}
+
+func (circuit *DummyCircuit) AbsDefine(api abstractor.API) error {
+	sum := api.Add(circuit.In_1, circuit.In_2)
+	api.AssertIsEqual(sum, circuit.Out)
+	return nil
+}
+
+func (circuit DummyCircuit) Define(api frontend.API) error {
+	return abstractor.Concretize(api, &circuit)
+}
+
+func TestDummyCircuit(t *testing.T) {
+	assignment := DummyCircuit{}
+	out, err := CircuitToLean(&assignment, ecc.BN254)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(out)
+}
+
 // Example: circuit with constant parameter
 type SliceGadget struct {
 	In_1 []frontend.Variable
