@@ -1,3 +1,6 @@
+// Package extractor implements the abstractor.API to export the circuit to Lean.
+// The file [lean_export.go] contains all the functions to generate the string
+// corresponding to the gnark circuit.
 package extractor
 
 import (
@@ -13,45 +16,62 @@ import (
 	"github.com/consensys/gnark/frontend/schema"
 )
 
+// The Operand interface marks the structures which can
+// be used as operands in the circuit.
+// The implementation of isOperand() for a type generally
+// does nothing.
+// If new Operand are added, update the case-statements of
+// these functions:
+// operandExpr() in lean_export.go
+// sanitizeVars() in extractor.go
 type Operand interface {
 	isOperand()
 }
 
+// Const indicates a hard-coded constant in the circuit
 type Const struct {
-	Value *big.Int
+	Value *big.Int // underlying constant value
 }
 
 func (_ Const) isOperand() {}
 
+// Gate indicates a gate in the arithmetic circuit.
+// Index is sequential and it is initialised by function AddApp
 type Gate struct {
-	Index int
+	Index int // the number of the gate
 }
 
 func (_ Gate) isOperand() {}
 
 // Input is used to save the position of the argument in the
-// list of arguments of the circuit function.
+// list of arguments of the circuit function. It is
+// instantiated in the function CircuitInit in lean_export.go
 type Input struct {
-	Index int
+	Index int // the field number in the circuit/gadget struct
 }
 
 func (_ Input) isOperand() {}
 
+// Proj is used for Array or Slice inputs which are
+// extracted as Vector in Lean.
 // Index is the index to be accessed in the array
 // Operand[Index]
 type Proj struct {
 	Operand Operand
-	Index   int
+	Index   int // index of the field in the array
 }
 
 func (_ Proj) isOperand() {}
 
+// ProjArray is used for nested arrays
 type ProjArray struct {
 	Proj []Operand
 }
 
 func (_ ProjArray) isOperand() {}
 
+// The Op interface marks the structures which can
+// be used as operators in the circuit.
 type Op interface {
 	isOp()
 }
@@ -84,51 +104,109 @@ const (
 
 func (_ OpKind) isOp() {}
 
+// The struct that represents a gadget.
+// It is instantiated in the function DefineGadget.
+// Args 
+type ExGadget struct {
+	Name      string // obtained from the Gadget struct name
+	Arity     int // number of gadget fields (private and public)
+	Code      []App
+	Outputs   []Operand
+	Extractor *CodeExtractor
+	Fields    []schema.Field // obtained from frontend.NewSchema
+	Args      []ExArg // list of gadget fields needed to know the right function signature in Lean
+}
+
+func (g *ExGadget) isOp() {}
+
+// The struct which combines Operators and Operands 
 type App struct {
 	Op   Op
 	Args []Operand
 }
 
+// The array which contains the series of operations
+// in a circuit or gadget
 type Code struct {
 	Gates []App
 }
 
-type ExGadget struct {
-	Name      string
-	Arity     int
-	Code      []App
-	Outputs   []Operand
-	Extractor *CodeExtractor
-	Fields    []schema.Field
-	Args      []ExArg
+// ExArgType is used by ExArg to keep track
+// of the length of nested arrays
+type ExArgType struct {
+	Size int
+	Type *ExArgType
 }
 
-func (g *ExGadget) isOp() {}
+// ExArg is used to keep track of the inputs of a
+// circuit or gadget. The reason we have the field
+// Kind is to distinguish between an array/slice of
+// length 1 and a single element. The Type field
+// is to allow nested arrays of different lengths
+type ExArg struct {
+	Name string
+	Kind reflect.Kind
+	Type ExArgType
+}
 
-func ArrayToSlice(v reflect.Value) []frontend.Variable {
-	res := make([]frontend.Variable, v.Len())
+// ExCircuit contains the structure of the circuit
+// to be fed to the function ExportCircuit in
+// lean_export.go to be converted in a Lean function
+type ExCircuit struct {
+	Inputs  []ExArg // list of circuit fields needed to know the right function signature in Lean
+	Gadgets []ExGadget // list of gadgets used
+	Code    []App // list of circuit operations
+	Field   ecc.ID // Field of the circuit. Needed for binary operations and to know the modulo
+	Name    string
+}
 
-	for i := 0; i < v.Len(); i++ {
-		res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
+// CodeExtractor is the object used throughout the
+// DefineGadget and AbsDefine functions to add operations
+// to the circuit or gadget
+type CodeExtractor struct {
+	Code    []App
+	Gadgets []ExGadget
+	Field   ecc.ID
+}
+
+// This function returns a slice with the same length as the input
+// array and the same elements for each index
+func arrayToSlice(array reflect.Value) []frontend.Variable {
+	res := make([]frontend.Variable, array.Len())
+
+	for i := 0; i < array.Len(); i++ {
+		res[i] = array.Index(i).Elem().Interface().(frontend.Variable)
 	}
 
 	return res
 }
 
+// The call function is used under the hood to call a gadget.
+// The first draft of the API required the user to first call DefineGadget
+// then invoke Call on the result. This has been hidded by the creation of the
+// function Call in CodeExtractor.
+// Due to the fact the return type is always an array, if the gadget returns a single
+// value, it will be placed in index 0
 func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
+	// This function behaves like other operations
+	// i.e. call AddApp and return the result of the call. The difference is
+	// that arguments require some manipulation because we don't know the fields
+	// of the gadget
 	args := []frontend.Variable{}
 
+	// The use of reflect is to make a list of frontend.Variable from the gadget
+	// fields.
 	rv := reflect.Indirect(reflect.ValueOf(gadget))
 	rt := rv.Type()
 	for i := 0; i < rt.NumField(); i++ {
-		fld := rt.Field(i)
-		v := rv.FieldByName(fld.Name)
+		rf := rt.Field(i)
+		v := rv.FieldByName(rf.Name)
 		if v.Kind() == reflect.Slice {
 			args = append(args, v.Interface().([]frontend.Variable))
 		} else if v.Kind() == reflect.Array {
-			// I can't convert from array to slice using Reflect because
-			// the field is unaddressable.
-			args = append(args, ArrayToSlice(v))
+			// Can't convert from array to slice using Reflect because
+			// the field is unaddressable so I need to create a new object
+			args = append(args, arrayToSlice(v))
 		} else {
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
@@ -146,40 +224,17 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 	return outs
 }
 
+// Single entry point to Call a gadget.
 func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
-	// Copying `gadget` because `DefineGadget` needs to manipulate the input
+	// Copying `gadget` because `DefineGadget` changes the input
 	v := reflect.ValueOf(gadget)
 	tmp_gadget := reflect.New(v.Type())
 	tmp_gadget.Elem().Set(v)
-	g := ce.DefineGadget(tmp_gadget.Interface().(abstractor.GadgetDefinition))
-	return g.Call(gadget)
+	ex_gadget := ce.DefineGadget(tmp_gadget.Interface().(abstractor.GadgetDefinition))
+	return ex_gadget.Call(gadget)
 }
 
-type ExArgType struct {
-	Size int
-	Type *ExArgType
-}
-
-type ExArg struct {
-	Name string
-	Kind reflect.Kind
-	Type ExArgType
-}
-
-type ExCircuit struct {
-	Inputs  []ExArg
-	Gadgets []ExGadget
-	Code    []App
-	Field   ecc.ID
-	Name    string
-}
-
-type CodeExtractor struct {
-	Code    []App
-	Gadgets []ExGadget
-	Field   ecc.ID
-}
-
+// This function generates the Operand struct from the list of arguments to an operation
 func sanitizeVars(args ...frontend.Variable) []Operand {
 	ops := []Operand{}
 	for _, arg := range args {
@@ -192,6 +247,7 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 			casted := arg.(big.Int)
 			ops = append(ops, Const{&casted})
 		case []frontend.Variable:
+			// In case of nested arrays, perform a recursion
 			opsArray := sanitizeVars(arg.([]frontend.Variable)...)
 			ops = append(ops, ProjArray{opsArray})
 		default:
@@ -334,6 +390,7 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
+// Checks whether name is already present in list gadgets
 func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	for _, gadget := range gadgets {
 		if gadget.Name == name {
@@ -343,6 +400,8 @@ func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	return nil
 }
 
+// The function DefineGadget parses gadget to generate an instance of ExGadget
+// If gadget has been parsed already, it will return a pointer to the existing ExGadget.
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
 		panic("DefineGadget only takes pointers to the gadget")
@@ -350,15 +409,16 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	schema, _ := GetSchema(gadget)
 	CircuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
-	// for arity because each array element is considered
-	// a parameter
+	// for arity because each element in the array is considered
+	// an additional field
 	arity := len(schema.Fields)
 	args := GetExArgs(gadget, schema.Fields)
 
 	// To distinguish between gadgets instantiated with different array
 	// sizes, add a suffix to the name. The suffix of each instantiation
 	// is made up of the concatenation of the length of all the array
-	// fields in the gadget
+	// fields in the gadget.
+	// This is because the Lean circuit will use fixed size Vectors.
 	suffix := ""
 	for _, a := range args {
 		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
