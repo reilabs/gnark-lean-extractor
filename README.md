@@ -1,6 +1,6 @@
-<p align=center>
-  <img src="https://user-images.githubusercontent.com/5780639/237803894-e2344067-aa77-488e-b2d0-6f980524dced.svg"/>
-</p>
+<a href="https://reilabs.io">
+  <img width="150" src="https://user-images.githubusercontent.com/5780639/237803894-e2344067-aa77-488e-b2d0-6f980524dced.svg"/>
+</a>
 
 # Gnark Lean Extractor
 
