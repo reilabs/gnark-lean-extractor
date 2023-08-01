@@ -1,7 +1,10 @@
 <a href="https://reilabs.io">
- <img width="150" src="https://github.com/reilabs/gnark-lean-extractor/assets/35899/5c2d97e7-8b17-4011-a934-8fb2aa77d5da" />
+<picture>
+  <source width="150" media="(prefers-color-scheme: dark)" srcset="https://github.com/reilabs/gnark-lean-extractor/assets/35899/c04bdb7f-4c31-4264-acb6-a96f32c6cc29">
+  <source width="150" media="(prefers-color-scheme: light)" srcset="https://github.com/reilabs/gnark-lean-extractor/assets/35899/fc11280b-e3e5-4a6f-83da-788884083c36">
+  <img width="150" src="https://github.com/reilabs/gnark-lean-extractor/assets/35899/fc11280b-e3e5-4a6f-83da-788884083c36">
+</picture>
 </a>
-
 
 # Gnark Lean Extractor
 
