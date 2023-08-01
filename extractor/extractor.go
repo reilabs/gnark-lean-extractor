@@ -106,20 +106,20 @@ func (_ OpKind) isOp() {}
 
 // The struct that represents a gadget.
 // It is instantiated in the function DefineGadget.
-// Args 
+// Args
 type ExGadget struct {
 	Name      string // obtained from the Gadget struct name
-	Arity     int // number of gadget fields (private and public)
+	Arity     int    // number of gadget fields (private and public)
 	Code      []App
 	Outputs   []Operand
 	Extractor *CodeExtractor
 	Fields    []schema.Field // obtained from frontend.NewSchema
-	Args      []ExArg // list of gadget fields needed to know the right function signature in Lean
+	Args      []ExArg        // list of gadget fields needed to know the right function signature in Lean
 }
 
 func (g *ExGadget) isOp() {}
 
-// The struct which combines Operators and Operands 
+// The struct which combines Operators and Operands
 type App struct {
 	Op   Op
 	Args []Operand
@@ -153,10 +153,10 @@ type ExArg struct {
 // to be fed to the function ExportCircuit in
 // lean_export.go to be converted in a Lean function
 type ExCircuit struct {
-	Inputs  []ExArg // list of circuit fields needed to know the right function signature in Lean
+	Inputs  []ExArg    // list of circuit fields needed to know the right function signature in Lean
 	Gadgets []ExGadget // list of gadgets used
-	Code    []App // list of circuit operations
-	Field   ecc.ID // Field of the circuit. Needed for binary operations and to know the modulo
+	Code    []App      // list of circuit operations
+	Field   ecc.ID     // Field of the circuit. Needed for binary operations and to know the modulo
 	Name    string
 }
 
