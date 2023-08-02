@@ -5,17 +5,16 @@ package abstractor
 
 import "github.com/consensys/gnark/frontend"
 
-// The interface to Call gadgets
 type Gadget interface {
 	Call(gadget GadgetDefinition) []frontend.Variable
 }
 
-// The interface to define the circuit of a gadget
+// GadgetDefinition is the interface to define the circuit of a gadget
 type GadgetDefinition interface {
 	DefineGadget(api API) []frontend.Variable
 }
 
-// The abstractor.API which extends frontend.API
+// API extends frontend.API
 type API interface {
 	frontend.API
 	DefineGadget(gadget GadgetDefinition) Gadget

@@ -34,12 +34,12 @@ func exportFooter(circuit ExCircuit) string {
 
 // This function generates the string of the gadget function in Lean
 func exportGadget(gadget ExGadget) string {
-	kArgsType := "F"
+	argsType := "F"
 	if len(gadget.Outputs) > 1 {
-		kArgsType = fmt.Sprintf("Vector F %d", len(gadget.Outputs))
+		argsType = fmt.Sprintf("Vector F %d", len(gadget.Outputs))
 	}
 	args := gadget.Args
-	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(args), kArgsType, genGadgetBody(args, gadget))
+	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(args), argsType, genGadgetBody(args, gadget))
 }
 
 // This function generates the string of the circuit function in Lean
@@ -71,7 +71,7 @@ func arrayInit(field schema.Field, array reflect.Value, op Operand) {
 	}
 }
 
-// This function initialises public fields of class
+// CircuitInit initialises public fields of class
 // with Input{} or Proj{} objects (for array/slice).
 // The goal of this function is to make the circuit or gadget
 // struct initialised for the extractor.
@@ -91,32 +91,32 @@ func CircuitInit(class any, schema *schema.Schema) error {
 		temp.Set(v)
 	}
 
-	tmp_c := reflect.ValueOf(&class).Elem().Elem()
-	tmp := reflect.New(tmp_c.Type()).Elem()
-	tmp.Set(tmp_c)
+	tmpC := reflect.ValueOf(&class).Elem().Elem()
+	tmp := reflect.New(tmpC.Type()).Elem()
+	tmp.Set(tmpC)
 	for j, f := range schema.Fields {
-		field_name := f.Name
-		field := v.FieldByName(field_name)
-		field_type := field.Type()
+		fieldName := f.Name
+		field := v.FieldByName(fieldName)
+		fieldType := field.Type()
 
 		// Can't assign an array to another array, therefore
 		// initialise each element in the array
-		if field_type.Kind() == reflect.Array {
-			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
-		} else if field_type.Kind() == reflect.Slice {
+		if fieldType.Kind() == reflect.Array {
+			arrayInit(f, tmp.Elem().FieldByName(fieldName), Input{j})
+		} else if fieldType.Kind() == reflect.Slice {
 			// Recreate a zeroed array to remove overlapping pointers if input
 			// arguments are duplicated (i.e. `api.Call(SliceGadget{circuit.Path, circuit.Path})`)
-			zero_array := make([]frontend.Variable, f.ArraySize)
-			tmp.Elem().FieldByName(field_name).Set(reflect.ValueOf(&zero_array).Elem())
+			zeroArray := make([]frontend.Variable, f.ArraySize)
+			tmp.Elem().FieldByName(fieldName).Set(reflect.ValueOf(&zeroArray).Elem())
 
-			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
-		} else if field_type.Kind() == reflect.Interface {
+			arrayInit(f, tmp.Elem().FieldByName(fieldName), Input{j})
+		} else if fieldType.Kind() == reflect.Interface {
 			init := Input{j}
 			value := reflect.ValueOf(init)
 
-			tmp.Elem().FieldByName(field_name).Set(value)
+			tmp.Elem().FieldByName(fieldName).Set(value)
 		} else {
-			fmt.Printf("Skipped type %s\n", field_type.Kind())
+			fmt.Printf("Skipped type %s\n", fieldType.Kind())
 		}
 	}
 	return nil
@@ -163,8 +163,8 @@ func getSchema(circuit any) (*schema.Schema, error) {
 	return schema.New(circuit, tVariable)
 }
 
-// The entry function which takes a circuit and a field and returns the string
-// of the Lean code that represents the circuit
+// CircuitToLean is entry function which takes a circuit and a field and
+// returns the string of the Lean code that represents the circuit
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	schema, err := getSchema(circuit)
 	if err != nil {
@@ -357,14 +357,14 @@ func genCallbackGate(gateVar string, op Op, operands []string, args []Operand) s
 	gateName := getGateName(gateVar, false)
 	switch op {
 	case OpFromBinary:
-		is_gate := reflect.TypeOf(args[0]) == reflect.TypeOf(Gate{})
-		if len(args) == 1 && is_gate {
+		isGate := reflect.TypeOf(args[0]) == reflect.TypeOf(Gate{})
+		if len(args) == 1 && isGate {
 			return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
 		}
 		return fmt.Sprintf("    ∃%s, %s vec![%s] %s ∧\n", gateName, genGateOp(op), strings.Join(operands, ", "), gateName)
 	case OpToBinary:
-		is_const := reflect.TypeOf(args[0]) == reflect.TypeOf(Const{})
-		if is_const {
+		isConst := reflect.TypeOf(args[0]) == reflect.TypeOf(Const{})
+		if isConst {
 			operands[0] = fmt.Sprintf("(%s:F)", operands[0])
 			return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
 		}

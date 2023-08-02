@@ -118,7 +118,7 @@ const (
 
 func (OpKind) isOp() {}
 
-// The struct that represents a gadget.
+// ExGadget contains all the needed parameters to export a gadget.
 // It is instantiated in the function DefineGadget.
 type ExGadget struct {
 	Name      string // obtained from the Gadget struct name
@@ -132,13 +132,13 @@ type ExGadget struct {
 
 func (g *ExGadget) isOp() {}
 
-// The struct which combines Operators and Operands
+// App combines Operators and Operands
 type App struct {
 	Op   Op
 	Args []Operand
 }
 
-// The array which contains the series of operations
+// Code contains the series of operations
 // in a circuit or gadget
 type Code struct {
 	Gates []App
@@ -194,7 +194,7 @@ func arrayToSlice(array reflect.Value) []frontend.Variable {
 	return res
 }
 
-// The call function is used under the hood to call a gadget.
+// Call function is used under the hood to call a gadget.
 // The first draft of the API required the user to first call DefineGadget
 // then invoke Call on the result. This has been hidded by the creation of the
 // function Call in CodeExtractor.
@@ -237,14 +237,14 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 	return outs
 }
 
-// Single entry point to Call a gadget.
+// Call is the single entry point to invoke a Gadget.
 func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
 	// Copying `gadget` because `DefineGadget` changes the input
 	v := reflect.ValueOf(gadget)
-	tmp_gadget := reflect.New(v.Type())
-	tmp_gadget.Elem().Set(v)
-	ex_gadget := ce.DefineGadget(tmp_gadget.Interface().(abstractor.GadgetDefinition))
-	return ex_gadget.Call(gadget)
+	tmpGadget := reflect.New(v.Type())
+	tmpGadget.Elem().Set(v)
+	exGadget := ce.DefineGadget(tmpGadget.Interface().(abstractor.GadgetDefinition))
+	return exGadget.Call(gadget)
 }
 
 // This function generates the Operand struct from the list of arguments to an operation
@@ -281,6 +281,7 @@ func (ce *CodeExtractor) Add(i1, i2 frontend.Variable, in ...frontend.Variable) 
 	return ce.addApp(OpAdd, append([]frontend.Variable{i1, i2}, in...)...)
 }
 
+// MulAcc is multiply and accumulate: a = a + (b * c)
 func (ce *CodeExtractor) MulAcc(a, b, c frontend.Variable) frontend.Variable {
 	return ce.addApp(OpMulAcc, a, b, c)
 }
@@ -297,12 +298,12 @@ func (ce *CodeExtractor) Mul(i1, i2 frontend.Variable, in ...frontend.Variable) 
 	return ce.addApp(OpMul, append([]frontend.Variable{i1, i2}, in...)...)
 }
 
-// Returns i1 / i2 with i2 != 0. If i1 == i2, it returns 0
+// DivUnchecked returns i1 / i2 with i2 != 0. If i1 == i2, it returns 0
 func (ce *CodeExtractor) DivUnchecked(i1, i2 frontend.Variable) frontend.Variable {
 	return ce.addApp(OpDivUnchecked, i1, i2)
 }
 
-// Returns i1 / i2 with i2 != 0
+// Div returns i1 / i2 with i2 != 0
 func (ce *CodeExtractor) Div(i1, i2 frontend.Variable) frontend.Variable {
 	return ce.addApp(OpDiv, i1, i2)
 }
@@ -311,7 +312,7 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 	return ce.addApp(OpInverse, i1)
 }
 
-// From integer to binary vector
+// ToBinary converts from integer to binary vector
 // n is the length of the resulting vector i.e. the number of bits starting from LSB
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
 	nbBits := ce.Field.ScalarField().BitLen()
@@ -325,7 +326,7 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 	return []frontend.Variable{gate}
 }
 
-// From binary vector to integer
+// FromBinary converts from binary vector to integer
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
 	// Packs in little-endian
 	return ce.addApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
@@ -343,12 +344,12 @@ func (ce *CodeExtractor) And(a, b frontend.Variable) frontend.Variable {
 	return ce.addApp(OpAnd, a, b)
 }
 
-// b must be 0 or 1. if b ? i1 : i2
+// Select is an if-like method; b must be 0 or 1. It returns if b ? i1 : i2
 func (ce *CodeExtractor) Select(b frontend.Variable, i1, i2 frontend.Variable) frontend.Variable {
 	return ce.addApp(OpSelect, b, i1, i2)
 }
 
-// 4-way multiplexer
+// Lookup2 is a 4-way multiplexer
 func (ce *CodeExtractor) Lookup2(b0, b1 frontend.Variable, i0, i1, i2, i3 frontend.Variable) frontend.Variable {
 	return ce.addApp(OpLookup, b0, b1, i0, i1, i2, i3)
 }
@@ -357,7 +358,7 @@ func (ce *CodeExtractor) IsZero(i1 frontend.Variable) frontend.Variable {
 	return ce.addApp(OpIsZero, i1)
 }
 
-// i1 < i2 ? -1 : 1
+// Cmp returns i1 < i2 ? -1 : 1
 func (ce *CodeExtractor) Cmp(i1, i2 frontend.Variable) frontend.Variable {
 	return ce.addApp(OpCmp, i1, i2)
 }
@@ -374,7 +375,7 @@ func (ce *CodeExtractor) AssertIsBoolean(i1 frontend.Variable) {
 	ce.addApp(OpAssertIsBool, i1)
 }
 
-// v <= bound
+// AssertIsLessOrEqual returns (v <= bound)
 func (ce *CodeExtractor) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
 	ce.addApp(OpAssertLessEqual, v, bound)
 }
@@ -411,7 +412,7 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
-// Checks whether name is already present in list gadgets
+// getGadgetByName checks whether name is already present in list gadgets
 func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	for _, gadget := range gadgets {
 		if gadget.Name == name {
@@ -421,7 +422,7 @@ func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	return nil
 }
 
-// The function DefineGadget parses gadget to generate an instance of ExGadget
+// DefineGadget parses gadget to generate an instance of ExGadget
 // If gadget has been parsed already, it will return a pointer to the existing ExGadget.
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
@@ -451,9 +452,9 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	}
 	name := fmt.Sprintf("%s%s", reflect.TypeOf(gadget).Elem().Name(), suffix)
 
-	ptr_gadget := getGadgetByName(ce.Gadgets, name)
-	if ptr_gadget != nil {
-		return ptr_gadget
+	ptrGadget := getGadgetByName(ce.Gadgets, name)
+	if ptrGadget != nil {
+		return ptrGadget
 	}
 
 	oldCode := ce.Code
