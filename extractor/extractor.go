@@ -18,6 +18,7 @@ package extractor
 
 import (
 	"fmt"
+	"log"
 	"math/big"
 	"reflect"
 
@@ -427,7 +428,10 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 		panic("DefineGadget only takes pointers to the gadget")
 	}
 	schema, _ := getSchema(gadget)
-	CircuitInit(gadget, schema)
+	err := CircuitInit(gadget, schema)
+	if err != nil {
+		log.Fatal(err)
+	}
 	// Can't use `schema.NbPublic + schema.NbSecret`
 	// for arity because each element in the array is considered
 	// an additional field

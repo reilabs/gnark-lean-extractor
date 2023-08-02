@@ -56,7 +56,7 @@ func exportCircuit(circuit ExCircuit) string {
 
 // This function initialises array elements with the operand op.
 // If it's a nested array, it performs recursion.
-func arrayInit(field schema.Field, array reflect.Value, op Operand) error {
+func arrayInit(field schema.Field, array reflect.Value, op Operand) {
 	for i := 0; i < field.ArraySize; i++ {
 		op := Proj{op, i}
 		switch len(field.SubFields) {
@@ -69,7 +69,6 @@ func arrayInit(field schema.Field, array reflect.Value, op Operand) error {
 			panic("Only nested arrays supported in SubFields")
 		}
 	}
-	return nil
 }
 
 // This function initialises public fields of class
