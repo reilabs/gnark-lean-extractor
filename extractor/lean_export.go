@@ -13,8 +13,8 @@ import (
 )
 
 // Prelude/Header of Lean circuit file
-func ExportPrelude(circuit ExCircuit) string {
-	s := fmt.Sprintf(`import ProvenZk.Gates
+func exportPrelude(circuit ExCircuit) string {
+	prelude := fmt.Sprintf(`import ProvenZk.Gates
 import ProvenZk.Ext.Vector
 
 namespace %s
@@ -23,17 +23,17 @@ def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order`, circuit.Name, circuit.Field.ScalarField().Text(16))
 
-	return s
+	return prelude
 }
 
 // Footer of Lean circuit file
-func ExportFooter(circuit ExCircuit) string {
-	s := fmt.Sprintf(`end %s`, circuit.Name)
-	return s
+func exportFooter(circuit ExCircuit) string {
+	footer := fmt.Sprintf(`end %s`, circuit.Name)
+	return footer
 }
 
 // This function generates the string of the gadget function in Lean
-func ExportGadget(gadget ExGadget) string {
+func exportGadget(gadget ExGadget) string {
 	kArgsType := "F"
 	if len(gadget.Outputs) > 1 {
 		kArgsType = fmt.Sprintf("Vector F %d", len(gadget.Outputs))
@@ -43,25 +43,25 @@ func ExportGadget(gadget ExGadget) string {
 }
 
 // This function generates the string of the circuit function in Lean
-func ExportCircuit(circuit ExCircuit) string {
+func exportCircuit(circuit ExCircuit) string {
 	gadgets := make([]string, len(circuit.Gadgets))
 	for i, gadget := range circuit.Gadgets {
-		gadgets[i] = ExportGadget(gadget)
+		gadgets[i] = exportGadget(gadget)
 	}
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
-	prelude := ExportPrelude(circuit)
-	footer := ExportFooter(circuit)
+	prelude := exportPrelude(circuit)
+	footer := exportFooter(circuit)
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ, footer)
 }
 
 // This function initialises array elements with the operand op.
 // If it's a nested array, it performs recursion.
-func ArrayInit(field schema.Field, array reflect.Value, op Operand) error {
+func arrayInit(field schema.Field, array reflect.Value, op Operand) error {
 	for i := 0; i < field.ArraySize; i++ {
 		op := Proj{op, i}
 		switch len(field.SubFields) {
 		case 1:
-			ArrayInit(field.SubFields[0], array.Index(i), op)
+			arrayInit(field.SubFields[0], array.Index(i), op)
 		case 0:
 			value := reflect.ValueOf(op)
 			array.Index(i).Set(value)
@@ -103,14 +103,14 @@ func CircuitInit(class any, schema *schema.Schema) error {
 		// Can't assign an array to another array, therefore
 		// initialise each element in the array
 		if field_type.Kind() == reflect.Array {
-			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
+			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
 		} else if field_type.Kind() == reflect.Slice {
 			// Recreate a zeroed array to remove overlapping pointers if input
 			// arguments are duplicated (i.e. `api.Call(SliceGadget{circuit.Path, circuit.Path})`)
 			zero_array := make([]frontend.Variable, f.ArraySize, f.ArraySize)
 			tmp.Elem().FieldByName(field_name).Set(reflect.ValueOf(&zero_array).Elem())
 
-			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
+			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
 		} else if field_type.Kind() == reflect.Interface {
 			init := Input{j}
 			value := reflect.ValueOf(init)
@@ -125,7 +125,7 @@ func CircuitInit(class any, schema *schema.Schema) error {
 
 // This function returns the reflect.Kind type of the
 // field name in structure class
-func KindOfField(class any, name string) reflect.Kind {
+func kindOfField(class any, name string) reflect.Kind {
 	v := reflect.ValueOf(class).Elem()
 	f := v.FieldByName(name)
 	return f.Kind()
@@ -133,10 +133,10 @@ func KindOfField(class any, name string) reflect.Kind {
 
 // This function generates and returns the ExArgType
 // for array/slice fields in the circuit or gadget struct.
-func CircuitArgs(field schema.Field) ExArgType {
+func circuitArgs(field schema.Field) ExArgType {
 	switch len(field.SubFields) {
 	case 1:
-		subType := CircuitArgs(field.SubFields[0])
+		subType := circuitArgs(field.SubFields[0])
 		return ExArgType{field.ArraySize, &subType}
 	case 0:
 		return ExArgType{field.ArraySize, nil}
@@ -148,18 +148,18 @@ func CircuitArgs(field schema.Field) ExArgType {
 
 // This function returns the list of ExArg given a struct
 // and a list of fields.
-func GetExArgs(class any, fields []schema.Field) []ExArg {
+func getExArgs(class any, fields []schema.Field) []ExArg {
 	args := []ExArg{}
 	for _, f := range fields {
-		kind := KindOfField(class, f.Name)
-		arg := ExArg{f.Name, kind, CircuitArgs(f)}
+		kind := kindOfField(class, f.Name)
+		arg := ExArg{f.Name, kind, circuitArgs(f)}
 		args = append(args, arg)
 	}
 	return args
 }
 
 // Cloned version of NewSchema without constraints
-func GetSchema(circuit any) (*schema.Schema, error) {
+func getSchema(circuit any) (*schema.Schema, error) {
 	tVariable := reflect.ValueOf(struct{ A frontend.Variable }{}).FieldByName("A").Type()
 	return schema.New(circuit, tVariable)
 }
@@ -167,7 +167,7 @@ func GetSchema(circuit any) (*schema.Schema, error) {
 // The entry function which takes a circuit and a field and returns the string
 // of the Lean code that represents the circuit
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
-	schema, err := GetSchema(circuit)
+	schema, err := getSchema(circuit)
 	if err != nil {
 		return "", err
 	}
@@ -192,13 +192,13 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	name := reflect.TypeOf(circuit).Elem().Name()
 
 	extractorCircuit := ExCircuit{
-		Inputs:  GetExArgs(circuit, schema.Fields),
+		Inputs:  getExArgs(circuit, schema.Fields),
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 		Field:   api.Field,
 		Name:    name,
 	}
-	out := ExportCircuit(extractorCircuit)
+	out := exportCircuit(extractorCircuit)
 	return out, nil
 }
 

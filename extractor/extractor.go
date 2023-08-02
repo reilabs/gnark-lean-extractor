@@ -224,7 +224,7 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		}
 	}
 
-	gate := g.Extractor.AddApp(g, args...)
+	gate := g.Extractor.addApp(g, args...)
 	outs := make([]frontend.Variable, len(g.Outputs))
 	if len(g.Outputs) == 1 {
 		outs[0] = gate
@@ -270,44 +270,44 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 	return ops
 }
 
-func (ce *CodeExtractor) AddApp(op Op, args ...frontend.Variable) Operand {
+func (ce *CodeExtractor) addApp(op Op, args ...frontend.Variable) Operand {
 	app := App{op, sanitizeVars(args...)}
 	ce.Code = append(ce.Code, app)
 	return Gate{len(ce.Code) - 1}
 }
 
 func (ce *CodeExtractor) Add(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpAdd, append([]frontend.Variable{i1, i2}, in...)...)
+	return ce.addApp(OpAdd, append([]frontend.Variable{i1, i2}, in...)...)
 }
 
 func (ce *CodeExtractor) MulAcc(a, b, c frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpMulAcc, a, b, c)
+	return ce.addApp(OpMulAcc, a, b, c)
 }
 
 func (ce *CodeExtractor) Neg(i1 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpNegative, i1)
+	return ce.addApp(OpNegative, i1)
 }
 
 func (ce *CodeExtractor) Sub(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpSub, append([]frontend.Variable{i1, i2}, in...)...)
+	return ce.addApp(OpSub, append([]frontend.Variable{i1, i2}, in...)...)
 }
 
 func (ce *CodeExtractor) Mul(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpMul, append([]frontend.Variable{i1, i2}, in...)...)
+	return ce.addApp(OpMul, append([]frontend.Variable{i1, i2}, in...)...)
 }
 
 // Returns i1 / i2 with i2 != 0. If i1 == i2, it returns 0
 func (ce *CodeExtractor) DivUnchecked(i1, i2 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpDivUnchecked, i1, i2)
+	return ce.addApp(OpDivUnchecked, i1, i2)
 }
 
 // Returns i1 / i2 with i2 != 0
 func (ce *CodeExtractor) Div(i1, i2 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpDiv, i1, i2)
+	return ce.addApp(OpDiv, i1, i2)
 }
 
 func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpInverse, i1)
+	return ce.addApp(OpInverse, i1)
 }
 
 // From integer to binary vector
@@ -320,62 +320,62 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 			panic("Number of bits in ToBinary must be > 0")
 		}
 	}
-	gate := ce.AddApp(OpToBinary, i1, nbBits)
+	gate := ce.addApp(OpToBinary, i1, nbBits)
 	return []frontend.Variable{gate}
 }
 
 // From binary vector to integer
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
 	// Packs in little-endian
-	return ce.AddApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
+	return ce.addApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
 }
 
 func (ce *CodeExtractor) Xor(a, b frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpXor, a, b)
+	return ce.addApp(OpXor, a, b)
 }
 
 func (ce *CodeExtractor) Or(a, b frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpOr, a, b)
+	return ce.addApp(OpOr, a, b)
 }
 
 func (ce *CodeExtractor) And(a, b frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpAnd, a, b)
+	return ce.addApp(OpAnd, a, b)
 }
 
 // b must be 0 or 1. if b ? i1 : i2
 func (ce *CodeExtractor) Select(b frontend.Variable, i1, i2 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpSelect, b, i1, i2)
+	return ce.addApp(OpSelect, b, i1, i2)
 }
 
 // 4-way multiplexer
 func (ce *CodeExtractor) Lookup2(b0, b1 frontend.Variable, i0, i1, i2, i3 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpLookup, b0, b1, i0, i1, i2, i3)
+	return ce.addApp(OpLookup, b0, b1, i0, i1, i2, i3)
 }
 
 func (ce *CodeExtractor) IsZero(i1 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpIsZero, i1)
+	return ce.addApp(OpIsZero, i1)
 }
 
 // i1 < i2 ? -1 : 1
 func (ce *CodeExtractor) Cmp(i1, i2 frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpCmp, i1, i2)
+	return ce.addApp(OpCmp, i1, i2)
 }
 
 func (ce *CodeExtractor) AssertIsEqual(i1, i2 frontend.Variable) {
-	ce.AddApp(OpAssertEq, i1, i2)
+	ce.addApp(OpAssertEq, i1, i2)
 }
 
 func (ce *CodeExtractor) AssertIsDifferent(i1, i2 frontend.Variable) {
-	ce.AddApp(OpAssertNotEq, i1, i2)
+	ce.addApp(OpAssertNotEq, i1, i2)
 }
 
 func (ce *CodeExtractor) AssertIsBoolean(i1 frontend.Variable) {
-	ce.AddApp(OpAssertIsBool, i1)
+	ce.addApp(OpAssertIsBool, i1)
 }
 
 // v <= bound
 func (ce *CodeExtractor) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
-	ce.AddApp(OpAssertLessEqual, v, bound)
+	ce.addApp(OpAssertLessEqual, v, bound)
 }
 
 func (ce *CodeExtractor) Println(a ...frontend.Variable) {
@@ -427,13 +427,13 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
 		panic("DefineGadget only takes pointers to the gadget")
 	}
-	schema, _ := GetSchema(gadget)
+	schema, _ := getSchema(gadget)
 	CircuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
 	// for arity because each element in the array is considered
 	// an additional field
 	arity := len(schema.Fields)
-	args := GetExArgs(gadget, schema.Fields)
+	args := getExArgs(gadget, schema.Fields)
 
 	// To distinguish between gadgets instantiated with different array
 	// sizes, add a suffix to the name. The suffix of each instantiation
