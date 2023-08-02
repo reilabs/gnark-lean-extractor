@@ -107,7 +107,7 @@ func CircuitInit(class any, schema *schema.Schema) error {
 		} else if field_type.Kind() == reflect.Slice {
 			// Recreate a zeroed array to remove overlapping pointers if input
 			// arguments are duplicated (i.e. `api.Call(SliceGadget{circuit.Path, circuit.Path})`)
-			zero_array := make([]frontend.Variable, f.ArraySize, f.ArraySize)
+			zero_array := make([]frontend.Variable, f.ArraySize)
 			tmp.Elem().FieldByName(field_name).Set(reflect.ValueOf(&zero_array).Elem())
 
 			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
@@ -228,13 +228,13 @@ func genArgs(inAssignment []ExArg) string {
 // arrays and nested arrays.
 // It flattens nested arrays into a single array.
 func extractGateVars(op Operand) []Operand {
-	switch op.(type) {
+	switch opType := op.(type) {
 	case Proj:
-		return extractGateVars(op.(Proj).Operand)
+		return extractGateVars(opType.Operand)
 	case ProjArray:
 		res := []Operand{}
-		for i := range op.(ProjArray).Proj {
-			res = append(res, extractGateVars(op.(ProjArray).Proj[i])...)
+		for _, proj := range opType.Proj {
+			res = append(res, extractGateVars(proj)...)
 		}
 		return res
 	default:
@@ -248,9 +248,9 @@ func assignGateVars(code []App, additional ...Operand) []string {
 		for _, arg := range app.Args {
 			bases := extractGateVars(arg)
 			for _, base := range bases {
-				switch base.(type) {
+				switch baseType := base.(type) {
 				case Gate:
-					ix := base.(Gate).Index
+					ix := baseType.Index
 					if gateVars[ix] == "" {
 						gateVars[ix] = fmt.Sprintf("gate_%d", ix)
 					}
@@ -261,9 +261,9 @@ func assignGateVars(code []App, additional ...Operand) []string {
 	for _, out := range additional {
 		outBases := extractGateVars(out)
 		for _, outBase := range outBases {
-			switch outBase.(type) {
+			switch baseType := outBase.(type) {
 			case Gate:
-				ix := outBase.(Gate).Index
+				ix := baseType.Index
 				if gateVars[ix] == "" {
 					gateVars[ix] = fmt.Sprintf("gate_%d", ix)
 				}
@@ -421,11 +421,11 @@ func genOpCall(gateVar string, inAssignment []ExArg, gateVars []string, op Op, a
 }
 
 func genLine(app App, gateVar string, inAssignment []ExArg, gateVars []string) string {
-	switch app.Op.(type) {
+	switch operator := app.Op.(type) {
 	case *ExGadget:
-		return genGadgetCall(gateVar, inAssignment, gateVars, app.Op.(*ExGadget), app.Args)
+		return genGadgetCall(gateVar, inAssignment, gateVars, operator, app.Args)
 	case Op:
-		return genOpCall(gateVar, inAssignment, gateVars, app.Op.(Op), app.Args)
+		return genOpCall(gateVar, inAssignment, gateVars, operator, app.Args)
 	}
 	return ""
 }
@@ -456,22 +456,22 @@ func genCircuitBody(circuit ExCircuit) string {
 }
 
 // This function generates the string for an operand
-func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) string {
-	switch operand.(type) {
+func operandExpr(op Operand, inAssignment []ExArg, gateVars []string) string {
+	switch operand := op.(type) {
 	case Input:
-		return inAssignment[operand.(Input).Index].Name
+		return inAssignment[operand.Index].Name
 	case Gate:
-		return gateVars[operand.(Gate).Index]
+		return gateVars[operand.Index]
 	case Proj:
-		return fmt.Sprintf("%s[%d]", operandExpr(operand.(Proj).Operand, inAssignment, gateVars), operand.(Proj).Index)
+		return fmt.Sprintf("%s[%d]", operandExpr(operand.Operand, inAssignment, gateVars), operand.Index)
 	case ProjArray:
-		opArray := operandExprs(operand.(ProjArray).Proj, inAssignment, gateVars)
+		opArray := operandExprs(operand.Proj, inAssignment, gateVars)
 		opArray = []string{strings.Join(opArray, ", ")}
 		return fmt.Sprintf("vec!%s", opArray)
 	case Const:
-		return operand.(Const).Value.Text(10)
+		return operand.Value.Text(10)
 	default:
-		fmt.Printf("Type %T\n", operand)
+		fmt.Printf("Type %T\n", op)
 		panic("not yet supported")
 	}
 }

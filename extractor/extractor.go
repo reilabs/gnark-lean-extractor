@@ -46,7 +46,7 @@ type Const struct {
 	Value *big.Int // underlying constant value
 }
 
-func (_ Const) isOperand() {}
+func (Const) isOperand() {}
 
 // Gate indicates a gate in the arithmetic circuit.
 // Index is sequential and it is initialised by function AddApp
@@ -54,7 +54,7 @@ type Gate struct {
 	Index int // the number of the gate
 }
 
-func (_ Gate) isOperand() {}
+func (Gate) isOperand() {}
 
 // Input is used to save the position of the argument in the
 // list of arguments of the circuit function. It is
@@ -63,7 +63,7 @@ type Input struct {
 	Index int // the field number in the circuit/gadget struct
 }
 
-func (_ Input) isOperand() {}
+func (Input) isOperand() {}
 
 // Proj is used for Array or Slice inputs which are
 // extracted as Vector in Lean.
@@ -74,14 +74,14 @@ type Proj struct {
 	Index   int // index of the field in the array
 }
 
-func (_ Proj) isOperand() {}
+func (Proj) isOperand() {}
 
 // ProjArray is used for nested arrays
 type ProjArray struct {
 	Proj []Operand
 }
 
-func (_ ProjArray) isOperand() {}
+func (ProjArray) isOperand() {}
 
 // The Op interface marks the structures which can
 // be used as operators in the circuit.
@@ -115,7 +115,7 @@ const (
 	OpAssertLessEqual
 )
 
-func (_ OpKind) isOp() {}
+func (OpKind) isOp() {}
 
 // The struct that represents a gadget.
 // It is instantiated in the function DefineGadget.
@@ -250,17 +250,17 @@ func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) []frontend.Var
 func sanitizeVars(args ...frontend.Variable) []Operand {
 	ops := []Operand{}
 	for _, arg := range args {
-		switch arg.(type) {
+		switch arg := arg.(type) {
 		case Input, Gate, Proj, Const:
 			ops = append(ops, arg.(Operand))
 		case int:
-			ops = append(ops, Const{big.NewInt(int64(arg.(int)))})
+			ops = append(ops, Const{big.NewInt(int64(arg))})
 		case big.Int:
-			casted := arg.(big.Int)
+			casted := arg
 			ops = append(ops, Const{&casted})
 		case []frontend.Variable:
 			// In case of nested arrays, perform a recursion
-			opsArray := sanitizeVars(arg.([]frontend.Variable)...)
+			opsArray := sanitizeVars(arg...)
 			ops = append(ops, ProjArray{opsArray})
 		default:
 			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
@@ -391,21 +391,20 @@ func (ce *CodeExtractor) NewHint(f hint.Function, nbOutputs int, inputs ...front
 }
 
 func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
-	switch v.(type) {
+	switch v := v.(type) {
 	case Const:
-		return v.(Const).Value, true
+		return v.Value, true
 	case Proj:
-		switch v.(Proj).Operand.(type) {
+		switch v.Operand.(type) {
 		case Const:
-			return v.(Proj).Operand.(Const).Value, true
+			return v.Operand.(Const).Value, true
 		default:
 			return nil, false
 		}
 	case int64:
-		return big.NewInt(v.(int64)), true
+		return big.NewInt(v), true
 	case big.Int:
-		casted := v.(big.Int)
-		return &casted, true
+		return &v, true
 	default:
 		return nil, false
 	}

@@ -1,9 +1,10 @@
 package abstractor
 
 import (
+	"math/big"
+
 	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
-	"math/big"
 )
 
 type ConcreteGadget struct {
