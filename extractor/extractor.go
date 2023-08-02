@@ -1,6 +1,19 @@
-// Package extractor implements the abstractor.API to export the circuit to Lean.
-// The file [lean_export.go] contains all the functions to generate the string
-// corresponding to the gnark circuit.
+// Package extractor implements the abstractor.API to transpile a circuit from
+// Golang to Lean.
+// The file [extractor.go] contains the functions which populate the ExCircuit
+// struct. The ExCircuit struct is used for the internal representation of the
+// circuit in a format to be processed for conversion to Lean.
+// The file [lean_export.go] contains the functions to generate the string
+// corresponding to the gnark circuit given the ExCircuit struct.
+//
+// Structure of extractor:
+// The single entry point to call the extractor is CircuitToLean which
+// takes a pointer to a struct that implements the abstractor.Circuit interface.
+// The circuit fields in the struct shall be public and of type
+// frontend.Variable or slices/arrays of frontend.Variable.
+// CircuitToLean uses schema.New function to scan the circuit fields to
+// initialise, then processes the circuit operations by calling AbsDefine
+// and finally it calls ExportCircuit to generate the Lean code.
 package extractor
 
 import (
@@ -106,7 +119,6 @@ func (_ OpKind) isOp() {}
 
 // The struct that represents a gadget.
 // It is instantiated in the function DefineGadget.
-// Args
 type ExGadget struct {
 	Name      string // obtained from the Gadget struct name
 	Arity     int    // number of gadget fields (private and public)
@@ -284,10 +296,12 @@ func (ce *CodeExtractor) Mul(i1, i2 frontend.Variable, in ...frontend.Variable) 
 	return ce.AddApp(OpMul, append([]frontend.Variable{i1, i2}, in...)...)
 }
 
+// Returns i1 / i2 with i2 != 0. If i1 == i2, it returns 0
 func (ce *CodeExtractor) DivUnchecked(i1, i2 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpDivUnchecked, i1, i2)
 }
 
+// Returns i1 / i2 with i2 != 0
 func (ce *CodeExtractor) Div(i1, i2 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpDiv, i1, i2)
 }
@@ -296,6 +310,8 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpInverse, i1)
 }
 
+// From integer to binary vector
+// n is the length of the resulting vector i.e. the number of bits starting from LSB
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
 	nbBits := ce.Field.ScalarField().BitLen()
 	if len(n) == 1 {
@@ -308,6 +324,7 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 	return []frontend.Variable{gate}
 }
 
+// From binary vector to integer
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
 	// Packs in little-endian
 	return ce.AddApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
@@ -325,10 +342,12 @@ func (ce *CodeExtractor) And(a, b frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpAnd, a, b)
 }
 
+// b must be 0 or 1. if b ? i1 : i2
 func (ce *CodeExtractor) Select(b frontend.Variable, i1, i2 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpSelect, b, i1, i2)
 }
 
+// 4-way multiplexer
 func (ce *CodeExtractor) Lookup2(b0, b1 frontend.Variable, i0, i1, i2, i3 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpLookup, b0, b1, i0, i1, i2, i3)
 }
@@ -337,6 +356,7 @@ func (ce *CodeExtractor) IsZero(i1 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpIsZero, i1)
 }
 
+// i1 < i2 ? -1 : 1
 func (ce *CodeExtractor) Cmp(i1, i2 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpCmp, i1, i2)
 }
@@ -353,6 +373,7 @@ func (ce *CodeExtractor) AssertIsBoolean(i1 frontend.Variable) {
 	ce.AddApp(OpAssertIsBool, i1)
 }
 
+// v <= bound
 func (ce *CodeExtractor) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
 	ce.AddApp(OpAssertLessEqual, v, bound)
 }
