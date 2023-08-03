@@ -14,9 +14,9 @@ import (
 
 // Example: readme circuit
 type DummyCircuit struct {
-	In_1 frontend.Variable
-	In_2 frontend.Variable
-	Out  frontend.Variable
+	In_1 frontend.Variable `gnark:",public"`
+	In_2 frontend.Variable `gnark:",public"`
+	Out  frontend.Variable `gnark:",public"`
 }
 
 func (circuit *DummyCircuit) AbsDefine(api abstractor.API) error {
@@ -161,8 +161,8 @@ func (gadget MySecondWidget) DefineGadget(api abstractor.API) []frontend.Variabl
 }
 
 type TwoGadgets struct {
-	In_1 frontend.Variable
-	In_2 frontend.Variable
+	In_1 frontend.Variable `gnark:",public"`
+	In_2 frontend.Variable `gnark:",public"`
 }
 
 func (circuit *TwoGadgets) AbsDefine(api abstractor.API) error {
