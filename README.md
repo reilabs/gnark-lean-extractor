@@ -45,15 +45,20 @@ func (circuit *MyCircuit) Define(api frontend.API) error {
 }
 ```
 
-Once you export this to Lean, you get a definition as follows:
+Once you export this to Lean, you get a definition as follows (comments added):
 
 ```lean
 namespace DummyCircuit
 
+-- Order is the order of the finite field which depends on the chosen curve.
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
 
+-- circuit is the transpiled `MyCircuit` in Lean.
+-- The format of the function is to connect a chain of constraints
+-- using AND. All circuits terminate with "∧ True" because we want to assert
+-- truth of the proposition.
 def circuit (In_1: F) (In_2: F) (Out: F): Prop :=
     ∃gate_0, gate_0 = Gates.add In_1 In_2 ∧
     Gates.eq gate_0 Out ∧

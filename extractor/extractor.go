@@ -1,5 +1,5 @@
-// Package extractor implements the abstractor.API to transpile a circuit from
-// Golang to Lean.
+// Package extractor implements abstractor.API to transpile a circuit from
+// Go to Lean.
 // The file [extractor.go] contains the functions which populate the ExCircuit
 // struct. The ExCircuit struct is used for the internal representation of the
 // circuit in a format to be processed for conversion to Lean.
