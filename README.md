@@ -45,7 +45,7 @@ func (circuit *MyCircuit) Define(api frontend.API) error {
 }
 ```
 
-Once you export this to Lean, you get a definition as follows (comments added):
+Once `MyCircuit` is exported to Lean, the following code is automatically generated (comments added):
 
 ```lean
 namespace DummyCircuit
