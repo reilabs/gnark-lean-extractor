@@ -12,6 +12,7 @@ import (
 	"github.com/consensys/gnark/frontend/schema"
 )
 
+// Prelude/Header of Lean circuit file
 func ExportPrelude(circuit ExCircuit) string {
 	s := fmt.Sprintf(`import ProvenZk.Gates
 import ProvenZk.Ext.Vector
@@ -25,20 +26,23 @@ abbrev F := ZMod Order`, circuit.Name, circuit.Field.ScalarField().Text(16))
 	return s
 }
 
+// Footer of Lean circuit file
 func ExportFooter(circuit ExCircuit) string {
 	s := fmt.Sprintf(`end %s`, circuit.Name)
 	return s
 }
 
+// This function generates the string of the gadget function in Lean
 func ExportGadget(gadget ExGadget) string {
 	kArgsType := "F"
 	if len(gadget.Outputs) > 1 {
 		kArgsType = fmt.Sprintf("Vector F %d", len(gadget.Outputs))
 	}
-	inAssignment := gadget.Args
-	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
+	args := gadget.Args
+	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(args), kArgsType, genGadgetBody(args, gadget))
 }
 
+// This function generates the string of the circuit function in Lean
 func ExportCircuit(circuit ExCircuit) string {
 	gadgets := make([]string, len(circuit.Gadgets))
 	for i, gadget := range circuit.Gadgets {
@@ -50,15 +54,17 @@ func ExportCircuit(circuit ExCircuit) string {
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ, footer)
 }
 
-func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
-	for i := 0; i < f.ArraySize; i++ {
+// This function initialises array elements with the operand op.
+// If it's a nested array, it performs recursion.
+func ArrayInit(field schema.Field, array reflect.Value, op Operand) error {
+	for i := 0; i < field.ArraySize; i++ {
 		op := Proj{op, i}
-		switch len(f.SubFields) {
+		switch len(field.SubFields) {
 		case 1:
-			ArrayInit(f.SubFields[0], v.Index(i), op)
+			ArrayInit(field.SubFields[0], array.Index(i), op)
 		case 0:
 			value := reflect.ValueOf(op)
-			v.Index(i).Set(value)
+			array.Index(i).Set(value)
 		default:
 			panic("Only nested arrays supported in SubFields")
 		}
@@ -66,14 +72,16 @@ func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
 	return nil
 }
 
+// This function initialises public fields of class
+// with Input{} or Proj{} objects (for array/slice).
+// The goal of this function is to make the circuit or gadget
+// struct initialised for the extractor.
 func CircuitInit(class any, schema *schema.Schema) error {
+	// Useful answers that guided me through reflect jungle
 	// https://stackoverflow.com/a/49704408
 	// https://stackoverflow.com/a/14162161
 	// https://stackoverflow.com/a/63422049
 
-	// The purpose of this function is to initialise the
-	// struct fields with Operand interfaces for being
-	// processed by the Extractor.
 	v := reflect.ValueOf(class)
 	if v.Type().Kind() == reflect.Ptr {
 		ptr := v
@@ -94,7 +102,6 @@ func CircuitInit(class any, schema *schema.Schema) error {
 
 		// Can't assign an array to another array, therefore
 		// initialise each element in the array
-
 		if field_type.Kind() == reflect.Array {
 			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
 		} else if field_type.Kind() == reflect.Slice {
@@ -116,14 +123,17 @@ func CircuitInit(class any, schema *schema.Schema) error {
 	return nil
 }
 
-func KindOfField(a any, s string) reflect.Kind {
-	v := reflect.ValueOf(a).Elem()
-	f := v.FieldByName(s)
+// This function returns the reflect.Kind type of the
+// field name in structure class
+func KindOfField(class any, name string) reflect.Kind {
+	v := reflect.ValueOf(class).Elem()
+	f := v.FieldByName(name)
 	return f.Kind()
 }
 
+// This function generates and returns the ExArgType
+// for array/slice fields in the circuit or gadget struct.
 func CircuitArgs(field schema.Field) ExArgType {
-	// Handling only subfields which are nested arrays
 	switch len(field.SubFields) {
 	case 1:
 		subType := CircuitArgs(field.SubFields[0])
@@ -131,14 +141,17 @@ func CircuitArgs(field schema.Field) ExArgType {
 	case 0:
 		return ExArgType{field.ArraySize, nil}
 	default:
+		// Handling only subfields which are nested arrays
 		panic("Only nested arrays supported in SubFields")
 	}
 }
 
-func GetExArgs(circuit any, fields []schema.Field) []ExArg {
+// This function returns the list of ExArg given a struct
+// and a list of fields.
+func GetExArgs(class any, fields []schema.Field) []ExArg {
 	args := []ExArg{}
 	for _, f := range fields {
-		kind := KindOfField(circuit, f.Name)
+		kind := KindOfField(class, f.Name)
 		arg := ExArg{f.Name, kind, CircuitArgs(f)}
 		args = append(args, arg)
 	}
@@ -151,6 +164,8 @@ func GetSchema(circuit any) (*schema.Schema, error) {
 	return schema.New(circuit, tVariable)
 }
 
+// The entry function which takes a circuit and a field and returns the string
+// of the Lean code that represents the circuit
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	schema, err := GetSchema(circuit)
 	if err != nil {
@@ -187,38 +202,43 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	return out, nil
 }
 
-func genNestedArrays(a ExArgType) string {
-	if a.Type != nil {
-		return fmt.Sprintf("Vector (%s) %d", genNestedArrays(*a.Type), a.Size)
+func genNestedArrays(arg ExArgType) string {
+	if arg.Type != nil {
+		return fmt.Sprintf("Vector (%s) %d", genNestedArrays(*arg.Type), arg.Size)
 	}
-	return fmt.Sprintf("Vector F %d", a.Size)
+	return fmt.Sprintf("Vector F %d", arg.Size)
 }
 
 func genArgs(inAssignment []ExArg) string {
 	args := make([]string, len(inAssignment))
-	for i, in := range inAssignment {
-		switch in.Kind {
+	for i, arg := range inAssignment {
+		switch arg.Kind {
 		case reflect.Array, reflect.Slice:
-			args[i] = fmt.Sprintf("(%s: %s)", in.Name, genNestedArrays(in.Type))
+			// Needed to create genNestedArrays to support recursion in case of nested
+			// arrays
+			args[i] = fmt.Sprintf("(%s: %s)", arg.Name, genNestedArrays(arg.Type))
 		default:
-			args[i] = fmt.Sprintf("(%s: F)", in.Name)
+			args[i] = fmt.Sprintf("(%s: F)", arg.Name)
 		}
 	}
 	return strings.Join(args, " ")
 }
 
-func extractGateVars(arg Operand) []Operand {
-	switch arg.(type) {
+// This function is needed by assignGateVars to handle
+// arrays and nested arrays.
+// It flattens nested arrays into a single array.
+func extractGateVars(op Operand) []Operand {
+	switch op.(type) {
 	case Proj:
-		return extractGateVars(arg.(Proj).Operand)
+		return extractGateVars(op.(Proj).Operand)
 	case ProjArray:
 		res := []Operand{}
-		for i := range arg.(ProjArray).Proj {
-			res = append(res, extractGateVars(arg.(ProjArray).Proj[i])...)
+		for i := range op.(ProjArray).Proj {
+			res = append(res, extractGateVars(op.(ProjArray).Proj[i])...)
 		}
 		return res
 	default:
-		return []Operand{arg}
+		return []Operand{op}
 	}
 }
 
@@ -359,8 +379,13 @@ func genGenericGate(op Op, operands []string) string {
 	return fmt.Sprintf("    %s %s ∧\n", genGateOp(op), strings.Join(operands, " "))
 }
 
+// This function generates and returns the operation call (i.e. ∃gate_0, gate_0 = Gates.add In_1 In_2 ∧)
+// There are three different types of operand: generic, functional and callback
+// - Generic gates return a Prop
+// - Functional gates return a value (ZMod N)
+// - Callback gates are implemented in Lean with the out argument as the output of the function and return a Prop
+// i.e. def div (a b out : ZMod N): Prop := b ≠ 0 ∧ out = a * (1 / b)
 func genOpCall(gateVar string, inAssignment []ExArg, gateVars []string, op Op, args []Operand) string {
-	// functional is set to true when the op returns a value
 	functional := false
 	callback := false
 	switch op {
@@ -372,7 +397,7 @@ func genOpCall(gateVar string, inAssignment []ExArg, gateVars []string, op Op, a
 
 	operands := operandExprs(args, inAssignment, gateVars)
 	if functional {
-		// if an operation supports infinite length of arguments,
+		// When an operation supports infinite length of arguments,
 		// turn it into a chain of operations
 		switch op {
 		case OpAdd, OpSub, OpMul:
@@ -430,6 +455,7 @@ func genCircuitBody(circuit ExCircuit) string {
 	return strings.Join(append(lines, lastLine), "")
 }
 
+// This function generates the string for an operand
 func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) string {
 	switch operand.(type) {
 	case Input:
@@ -450,6 +476,7 @@ func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) strin
 	}
 }
 
+// This function generates the string of operands by calling operandExpr for each operand
 func operandExprs(operands []Operand, inAssignment []ExArg, gateVars []string) []string {
 	exprs := make([]string, len(operands))
 	for i, operand := range operands {
