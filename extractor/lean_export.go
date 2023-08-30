@@ -151,7 +151,15 @@ func GetSchema(circuit any) (*schema.Schema, error) {
 	return schema.New(circuit, tVariable)
 }
 
+func CloneCircuit(circuit abstractor.Circuit) abstractor.Circuit {
+	v := reflect.ValueOf(circuit).Elem()
+	vp2 := reflect.New(v.Type())
+	vp2.Elem().Set(v)
+	return vp2.Interface().(abstractor.Circuit)
+}
+
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
+	circuit = CloneCircuit(circuit)
 	schema, err := GetSchema(circuit)
 	if err != nil {
 		return "", err
