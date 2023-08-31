@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"fmt"
+	"math/big"
 	"reflect"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 	"github.com/consensys/gnark/frontend/schema"
 )
 
-func ExportPrelude(circuit ExCircuit) string {
+func ExportPrelude(name string, order *big.Int) string {
 	s := fmt.Sprintf(`import ProvenZk.Gates
 import ProvenZk.Ext.Vector
 
@@ -20,13 +21,13 @@ namespace %s
 
 def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
-abbrev F := ZMod Order`, circuit.Name, circuit.Field.ScalarField().Text(16))
+abbrev F := ZMod Order`, name, order.Text(16))
 
 	return s
 }
 
-func ExportFooter(circuit ExCircuit) string {
-	s := fmt.Sprintf(`end %s`, circuit.Name)
+func ExportFooter(name string) string {
+	s := fmt.Sprintf(`end %s`, name)
 	return s
 }
 
@@ -39,15 +40,20 @@ func ExportGadget(gadget ExGadget) string {
 	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
 }
 
-func ExportCircuit(circuit ExCircuit) string {
-	gadgets := make([]string, len(circuit.Gadgets))
-	for i, gadget := range circuit.Gadgets {
+func ExportGadgets(exGadgets []ExGadget) string {
+	gadgets := make([]string, len(exGadgets))
+	for i, gadget := range exGadgets {
 		gadgets[i] = ExportGadget(gadget)
 	}
+	return strings.Join(gadgets, "\n\n")
+}
+
+func ExportCircuit(circuit ExCircuit) string {
+	gadgets := ExportGadgets(circuit.Gadgets)
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
-	prelude := ExportPrelude(circuit)
-	footer := ExportFooter(circuit)
-	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, strings.Join(gadgets, "\n\n"), circ, footer)
+	prelude := ExportPrelude(circuit.Name, circuit.Field.ScalarField())
+	footer := ExportFooter(circuit.Name)
+	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, gadgets, circ, footer)
 }
 
 func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
@@ -151,6 +157,10 @@ func GetSchema(circuit any) (*schema.Schema, error) {
 	return schema.New(circuit, tVariable)
 }
 
+func getStructName(circuit any) string {
+	return reflect.TypeOf(circuit).Elem().Name()
+}
+
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	schema, err := GetSchema(circuit)
 	if err != nil {
@@ -174,7 +184,7 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 		return "", err
 	}
 
-	name := reflect.TypeOf(circuit).Elem().Name()
+	name := getStructName(circuit)
 
 	extractorCircuit := ExCircuit{
 		Inputs:  GetExArgs(circuit, schema.Fields),
@@ -185,6 +195,21 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	}
 	out := ExportCircuit(extractorCircuit)
 	return out, nil
+}
+
+func GadgetToLean(circuit abstractor.GadgetDefinition, field ecc.ID) (string, error) {
+	api := CodeExtractor{
+		Code:    []App{},
+		Gadgets: []ExGadget{},
+		Field:   field,
+	}
+	name := getStructName(circuit)
+
+	api.DefineGadget(circuit)
+	gadgets := ExportGadgets(api.Gadgets)
+	prelude := ExportPrelude(name, api.Field.ScalarField())
+	footer := ExportFooter(name)
+	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets, footer), nil
 }
 
 func genNestedArrays(a ExArgType) string {
