@@ -26,3 +26,7 @@ type Circuit interface {
 func Concretize(api frontend.API, circuit Circuit) error {
 	return circuit.AbsDefine(&Concretizer{api})
 }
+
+func CallGadget(api frontend.API, circuit GadgetDefinition) []frontend.Variable {
+	return circuit.DefineGadget(&Concretizer{api})
+}
