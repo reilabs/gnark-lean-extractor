@@ -123,7 +123,7 @@ func (c *Concretizer) DefineGadget(gadget GadgetDefinition) Gadget {
 }
 
 func (c *Concretizer) Call(gadget GadgetDefinition) []frontend.Variable {
-	return c.Call(gadget)
+	return c.DefineGadget(gadget).Call(gadget)
 }
 
 var _ API = &(Concretizer{})
