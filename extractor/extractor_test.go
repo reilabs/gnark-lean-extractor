@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Example: ToBinary behaviour
+// Example: ToBinary behaviour and nested Slice
 type VectorGadget struct {
 	In_1 []frontend.Variable
 	In_2 []frontend.Variable
@@ -29,16 +29,17 @@ func (gadget VectorGadget) DefineGadget(api abstractor.API) []frontend.Variable 
 type ToBinaryCircuit struct {
 	In  frontend.Variable `gnark:",public"`
 	Out frontend.Variable `gnark:",public"`
+	Double [][]frontend.Variable `gnark:",public"`
 }
 
 func (circuit *ToBinaryCircuit) AbsDefine(api abstractor.API) error {
 	bin := api.ToBinary(circuit.In, 3)
 	bout := api.ToBinary(circuit.Out, 3)
 
-	api.Mul(bin[0], bout[0])
+	api.Add(circuit.Double[2][2], circuit.Double[1][1], circuit.Double[0][0])
 	api.Mul(bin[1], bout[1])
-	d := api.Call(VectorGadget{bin, bout})
-	api.Mul(d[0], d[1])
+	d := api.Call(VectorGadget{circuit.Double[2][:], circuit.Double[0][:]})
+	api.Mul(d[2], d[1])
 
 	return nil
 }
@@ -48,7 +49,13 @@ func (circuit ToBinaryCircuit) Define(api frontend.API) error {
 }
 
 func TestToBinaryCircuit(t *testing.T) {
-	assignment := ToBinaryCircuit{}
+	dim_1 := 3
+	dim_2 := 3
+	doubleSlice := make([][]frontend.Variable, dim_1)
+	for i := 0; i < int(dim_1); i++ {
+		doubleSlice[i] = make([]frontend.Variable, dim_2)
+	}
+	assignment := ToBinaryCircuit{Double: doubleSlice}
 	out, err := CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)
