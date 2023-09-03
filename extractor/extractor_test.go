@@ -27,8 +27,8 @@ func (gadget VectorGadget) DefineGadget(api abstractor.API) []frontend.Variable 
 }
 
 type ToBinaryCircuit struct {
-	In  frontend.Variable `gnark:",public"`
-	Out frontend.Variable `gnark:",public"`
+	In     frontend.Variable     `gnark:",public"`
+	Out    frontend.Variable     `gnark:",public"`
 	Double [][]frontend.Variable `gnark:",public"`
 }
 
