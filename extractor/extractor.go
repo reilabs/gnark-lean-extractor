@@ -253,8 +253,13 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 			panic("Number of bits in ToBinary must be > 0")
 		}
 	}
+
 	gate := ce.AddApp(OpToBinary, i1, nbBits)
-	return []frontend.Variable{gate}
+	outs := make([]frontend.Variable, nbBits)
+	for i := range outs {
+		outs[i] = Proj{gate, i}
+	}
+	return outs
 }
 
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {

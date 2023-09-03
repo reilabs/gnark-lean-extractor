@@ -12,6 +12,50 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Example: ToBinary behaviour
+type VectorGadget struct {
+	In_1 []frontend.Variable
+	In_2 []frontend.Variable
+}
+
+func (gadget VectorGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+	var sum frontend.Variable
+	for i := 0; i < len(gadget.In_1); i++ {
+		sum = api.Mul(gadget.In_1[i], gadget.In_2[i])
+	}
+	return []frontend.Variable{sum, sum, sum}
+}
+
+type ToBinaryCircuit struct {
+	In  frontend.Variable   `gnark:",public"`
+	Out frontend.Variable   `gnark:",public"`
+}
+
+func (circuit *ToBinaryCircuit) AbsDefine(api abstractor.API) error {
+	bin := api.ToBinary(circuit.In, 3)
+	bout := api.ToBinary(circuit.Out, 3)
+
+	api.Mul(bin[0], bout[0])
+	api.Mul(bin[1], bout[1])
+	d := api.Call(VectorGadget{bin, bout})
+	api.Mul(d[0], d[1])
+
+	return nil
+}
+
+func (circuit ToBinaryCircuit) Define(api frontend.API) error {
+	return abstractor.Concretize(api, &circuit)
+}
+
+func TestToBinaryCircuit(t *testing.T) {
+	assignment := ToBinaryCircuit{}
+	out, err := CircuitToLean(&assignment, ecc.BN254)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(out)
+}
+
 // Example: readme circuit
 type DummyCircuit struct {
 	In_1 frontend.Variable
