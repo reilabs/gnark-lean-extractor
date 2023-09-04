@@ -190,23 +190,26 @@ func TestMerkleRecover(t *testing.T) {
 type MyWidget struct {
 	Test_1 frontend.Variable
 	Test_2 frontend.Variable
+	Num int
 }
 
 func (gadget MyWidget) DefineGadget(api abstractor.API) []frontend.Variable {
 	sum := api.Add(gadget.Test_1, gadget.Test_2)
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
 	r := api.Div(sum, mul)
+	api.AssertIsBoolean(gadget.Num)
 	return []frontend.Variable{r}
 }
 
 type MySecondWidget struct {
 	Test_1 frontend.Variable
 	Test_2 frontend.Variable
+	Num int
 }
 
 func (gadget MySecondWidget) DefineGadget(api abstractor.API) []frontend.Variable {
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
-	snd := api.Call(MyWidget{gadget.Test_1, gadget.Test_2})[0]
+	snd := api.Call(MyWidget{gadget.Test_1, gadget.Test_2, gadget.Num})[0]
 	r := api.Mul(mul, snd)
 	return []frontend.Variable{r}
 }
@@ -214,13 +217,13 @@ func (gadget MySecondWidget) DefineGadget(api abstractor.API) []frontend.Variabl
 type TwoGadgets struct {
 	In_1 frontend.Variable
 	In_2 frontend.Variable
+	Num int
 }
 
 func (circuit *TwoGadgets) AbsDefine(api abstractor.API) error {
 	sum := api.Add(circuit.In_1, circuit.In_2)
 	prod := api.Mul(circuit.In_1, circuit.In_2)
-	api.Call(MySecondWidget{sum, prod})
-
+	api.Call(MySecondWidget{sum, prod, circuit.Num})
 	return nil
 }
 
@@ -229,7 +232,7 @@ func (circuit TwoGadgets) Define(api frontend.API) error {
 }
 
 func TestTwoGadgets(t *testing.T) {
-	assignment := TwoGadgets{}
+	assignment := TwoGadgets{Num: 11}
 	out, err := CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)

@@ -124,13 +124,14 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 	for i := 0; i < rt.NumField(); i++ {
 		fld := rt.Field(i)
 		v := rv.FieldByName(fld.Name)
-		if v.Kind() == reflect.Slice {
+		switch v.Kind() {
+		case reflect.Slice:
 			args = append(args, v.Interface().([]frontend.Variable))
-		} else if v.Kind() == reflect.Array {
+		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
 			// the field is unaddressable.
 			args = append(args, ArrayToSlice(v))
-		} else {
+		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
 	}
