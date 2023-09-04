@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"strings"
 
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
 
@@ -353,6 +354,13 @@ func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	return nil
 }
 
+func getSize(elem ExArgType) []string {
+	if elem.Type == nil {
+		return []string{fmt.Sprintf("%d", elem.Size)}
+	}
+	return append(getSize(*elem.Type), fmt.Sprintf("%d", elem.Size))
+}
+
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
 		panic("DefineGadget only takes pointers to the gadget")
@@ -372,7 +380,8 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	suffix := ""
 	for _, a := range args {
 		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
-			suffix += fmt.Sprintf("_%d", a.Type.Size)
+			suffix += "_"
+			suffix += strings.Join(getSize(a.Type), "_")
 		}
 	}
 	name := fmt.Sprintf("%s%s", reflect.TypeOf(gadget).Elem().Name(), suffix)
