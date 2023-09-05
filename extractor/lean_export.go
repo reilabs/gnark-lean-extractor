@@ -72,6 +72,26 @@ func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
 	return nil
 }
 
+func ArrayZero(v reflect.Value) {
+	switch v.Kind() {
+	case reflect.Slice:
+		if v.Len() != 0 {
+			// Check if there are nested arrays. If yes, continue recursion
+			// until most nested array
+			if v.Addr().Elem().Index(0).Kind() == reflect.Slice {
+				for i := 0; i < v.Len(); i++ {
+					ArrayZero(v.Addr().Elem().Index(i))
+				}
+			} else {
+				zero_array := make([]frontend.Variable, v.Len(), v.Len())
+				v.Set(reflect.ValueOf(&zero_array).Elem())
+			}
+		}
+	default:
+		panic("Only nested slices supported in SubFields of slices")
+	}
+}
+
 func CircuitInit(class any, schema *schema.Schema) error {
 	// https://stackoverflow.com/a/49704408
 	// https://stackoverflow.com/a/14162161
@@ -106,9 +126,7 @@ func CircuitInit(class any, schema *schema.Schema) error {
 		} else if field_type.Kind() == reflect.Slice {
 			// Recreate a zeroed array to remove overlapping pointers if input
 			// arguments are duplicated (i.e. `api.Call(SliceGadget{circuit.Path, circuit.Path})`)
-			zero_array := make([]frontend.Variable, f.ArraySize, f.ArraySize)
-			tmp.Elem().FieldByName(field_name).Set(reflect.ValueOf(&zero_array).Elem())
-
+			ArrayZero(tmp.Elem().FieldByName(field_name))
 			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
 		} else if field_type.Kind() == reflect.Interface {
 			init := Input{j}

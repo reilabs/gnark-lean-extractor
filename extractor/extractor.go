@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"strings"
 
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
 
@@ -123,13 +124,14 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 	for i := 0; i < rt.NumField(); i++ {
 		fld := rt.Field(i)
 		v := rv.FieldByName(fld.Name)
-		if v.Kind() == reflect.Slice {
+		switch v.Kind() {
+		case reflect.Slice:
 			args = append(args, v.Interface().([]frontend.Variable))
-		} else if v.Kind() == reflect.Array {
+		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
 			// the field is unaddressable.
 			args = append(args, ArrayToSlice(v))
-		} else {
+		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
 	}
@@ -253,8 +255,13 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 			panic("Number of bits in ToBinary must be > 0")
 		}
 	}
+
 	gate := ce.AddApp(OpToBinary, i1, nbBits)
-	return []frontend.Variable{gate}
+	outs := make([]frontend.Variable, nbBits)
+	for i := range outs {
+		outs[i] = Proj{gate, i}
+	}
+	return outs
 }
 
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
@@ -348,6 +355,13 @@ func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	return nil
 }
 
+func getSize(elem ExArgType) []string {
+	if elem.Type == nil {
+		return []string{fmt.Sprintf("%d", elem.Size)}
+	}
+	return append(getSize(*elem.Type), fmt.Sprintf("%d", elem.Size))
+}
+
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
 		panic("DefineGadget only takes pointers to the gadget")
@@ -367,7 +381,8 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	suffix := ""
 	for _, a := range args {
 		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
-			suffix += fmt.Sprintf("_%d", a.Type.Size)
+			suffix += "_"
+			suffix += strings.Join(getSize(a.Type), "_")
 		}
 	}
 	name := fmt.Sprintf("%s%s", reflect.TypeOf(gadget).Elem().Name(), suffix)
