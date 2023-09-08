@@ -28,12 +28,12 @@ func Concretize(api frontend.API, circuit Circuit) error {
 }
 
 func CallGadget(api frontend.API, circuit GadgetDefinition) []frontend.Variable {
-    _, ok := api.(API)
-    if ok {
-    	// The consequence of calling CallGadget with abstractor.API is that
-    	// the circuit is extracted as a single function instead of
-    	// splitting in sub-circuits
-        panic("abstractor.CallGadget can't be called with abstractor.API")
-    }
+	_, ok := api.(API)
+	if ok {
+		// The consequence of calling CallGadget with abstractor.API is that
+		// the circuit is extracted as a single function instead of
+		// splitting in sub-circuits
+		panic("abstractor.CallGadget can't be called with abstractor.API")
+	}
 	return circuit.DefineGadget(&Concretizer{api})
 }

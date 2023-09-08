@@ -57,8 +57,8 @@ func TestGadgetExtraction(t *testing.T) {
 		doubleSlice[i] = make([]frontend.Variable, dim_2)
 	}
 	assignment := VectorGadget{
-		In_1: make([]frontend.Variable, dim_2),
-		In_2: make([]frontend.Variable, dim_2),
+		In_1:   make([]frontend.Variable, dim_2),
+		In_2:   make([]frontend.Variable, dim_2),
 		Nested: doubleSlice,
 	}
 	out, err := GadgetToLean(&assignment, ecc.BN254)
