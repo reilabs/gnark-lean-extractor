@@ -49,6 +49,25 @@ func (circuit ToBinaryCircuit) Define(api frontend.API) error {
 	return abstractor.Concretize(api, &circuit)
 }
 
+func TestGadgetExtraction(t *testing.T) {
+	dim_1 := 3
+	dim_2 := 3
+	doubleSlice := make([][]frontend.Variable, dim_1)
+	for i := 0; i < int(dim_1); i++ {
+		doubleSlice[i] = make([]frontend.Variable, dim_2)
+	}
+	assignment := VectorGadget{
+		In_1: make([]frontend.Variable, dim_2),
+		In_2: make([]frontend.Variable, dim_2),
+		Nested: doubleSlice,
+	}
+	out, err := GadgetToLean(&assignment, ecc.BN254)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(out)
+}
+
 func TestToBinaryCircuit(t *testing.T) {
 	dim_1 := 3
 	dim_2 := 3
