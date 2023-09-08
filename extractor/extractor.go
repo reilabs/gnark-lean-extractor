@@ -24,6 +24,12 @@ type Const struct {
 
 func (_ Const) isOperand() {}
 
+type Integer struct {
+	Value *big.Int
+}
+
+func (_ Integer) isOperand() {}
+
 type Gate struct {
 	Index int
 }
@@ -211,6 +217,8 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		switch arg.(type) {
 		case Input, Gate, Proj, Const:
 			ops = append(ops, arg.(Operand))
+		case Integer:
+			ops = append(ops, arg.(Operand))
 		case int:
 			ops = append(ops, Const{big.NewInt(int64(arg.(int)))})
 		case big.Int:
@@ -274,7 +282,7 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 		}
 	}
 
-	gate := ce.AddApp(OpToBinary, i1, nbBits)
+	gate := ce.AddApp(OpToBinary, i1, Integer{big.NewInt(int64(nbBits))})
 	outs := make([]frontend.Variable, nbBits)
 	for i := range outs {
 		outs[i] = Proj{gate, i}

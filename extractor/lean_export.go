@@ -505,6 +505,8 @@ func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) strin
 		return fmt.Sprintf("vec!%s", opArray)
 	case Const:
 		return fmt.Sprintf("(%s:F)", operand.(Const).Value.Text(10))
+	case Integer:
+		return operand.(Integer).Value.Text(10)
 	default:
 		fmt.Printf("Type %T\n", operand)
 		panic("not yet supported")
