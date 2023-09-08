@@ -14,8 +14,9 @@ import (
 
 // Example: ToBinary behaviour and nested Slice
 type VectorGadget struct {
-	In_1 []frontend.Variable
-	In_2 []frontend.Variable
+	In_1   []frontend.Variable
+	In_2   []frontend.Variable
+	Nested [][]frontend.Variable
 }
 
 func (gadget VectorGadget) DefineGadget(api abstractor.API) []frontend.Variable {
@@ -38,7 +39,7 @@ func (circuit *ToBinaryCircuit) AbsDefine(api abstractor.API) error {
 
 	api.Add(circuit.Double[2][2], circuit.Double[1][1], circuit.Double[0][0])
 	api.Mul(bin[1], bout[1])
-	d := api.Call(VectorGadget{circuit.Double[2][:], circuit.Double[0][:]})
+	d := api.Call(VectorGadget{circuit.Double[2][:], circuit.Double[0][:], circuit.Double})
 	api.Mul(d[2], d[1])
 
 	return nil
