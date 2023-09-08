@@ -24,6 +24,10 @@ type Const struct {
 
 func (_ Const) isOperand() {}
 
+// Integer struct is used to distinguish between a constant in
+// place of a frontend.Variable and an integer where an integer
+// is the only type allowed. Integer sruct is currently only
+// used for the length of the result in ToBinary function.
 type Integer struct {
 	Value *big.Int
 }
