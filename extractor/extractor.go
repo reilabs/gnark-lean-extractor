@@ -116,6 +116,24 @@ func ArrayToSlice(v reflect.Value) []frontend.Variable {
 	return res
 }
 
+// flattenSlice takes a slice and returns a single dimension
+// slice of frontend.Variable. This is needed to transform
+// nested slices into single dimensional slices to be
+// processed by sanitizeVars.
+func flattenSlice(value reflect.Value) []frontend.Variable {
+	if value.Len() == 0 {
+		panic("Slice in flattenSlice can't have length of 0")
+	}
+	if value.Index(0).Kind() == reflect.Slice {
+		args := []frontend.Variable{}
+		for i := 0; i < value.Len(); i++ {
+			args = append(args, flattenSlice(value.Index(i)))
+		}
+		return args
+	}
+	return value.Interface().([]frontend.Variable)
+}
+
 func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
 	args := []frontend.Variable{}
 
@@ -126,7 +144,7 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		v := rv.FieldByName(fld.Name)
 		switch v.Kind() {
 		case reflect.Slice:
-			args = append(args, v.Interface().([]frontend.Variable))
+			args = append(args, flattenSlice(v))
 		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
 			// the field is unaddressable.
