@@ -230,8 +230,8 @@ type MySecondWidget struct {
 func (gadget MySecondWidget) DefineGadget(api abstractor.API) []frontend.Variable {
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
 	snd := api.Call(MyWidget{gadget.Test_1, gadget.Test_2, gadget.Num})[0]
-	r := api.Mul(mul, snd)
-	return []frontend.Variable{r}
+	api.Mul(mul, snd)
+	return []frontend.Variable{}
 }
 
 type TwoGadgets struct {

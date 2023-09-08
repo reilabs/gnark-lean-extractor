@@ -32,12 +32,15 @@ func ExportFooter(name string) string {
 }
 
 func ExportGadget(gadget ExGadget) string {
-	kArgsType := "F"
-	if len(gadget.Outputs) > 1 {
-		kArgsType = fmt.Sprintf("Vector F %d", len(gadget.Outputs))
+	kArgs := ""
+	if len(gadget.Outputs) == 1 {
+		kArgs = "(k: F -> Prop)"
+	} else if len(gadget.Outputs) > 1 {
+		kArgs = fmt.Sprintf("(k: Vector F %d -> Prop)", len(gadget.Outputs))
 	}
 	inAssignment := gadget.Args
-	return fmt.Sprintf("def %s %s (k: %s -> Prop): Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgsType, genGadgetBody(inAssignment, gadget))
+
+	return fmt.Sprintf("def %s %s %s: Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgs, genGadgetBody(inAssignment, gadget))
 }
 
 func ExportGadgets(exGadgets []ExGadget) string {
@@ -309,11 +312,14 @@ func assignGateVars(code []App, additional ...Operand) []string {
 func genGadgetCall(gateVar string, inAssignment []ExArg, gateVars []string, gadget *ExGadget, args []Operand) string {
 	name := gadget.Name
 	operands := operandExprs(args, inAssignment, gateVars)
-	binder := "_"
-	if gateVar != "" {
-		binder = gateVar
+	binder := "∧"
+	if len(gadget.Outputs) > 0 {
+		binder = "fun _ =>"
+		if gateVar != "" {
+			binder = fmt.Sprintf("fun %s =>", gateVar)
+		}
 	}
-	return fmt.Sprintf("    %s %s fun %s =>\n", name, strings.Join(operands, " "), binder)
+	return fmt.Sprintf("    %s %s %s\n", name, strings.Join(operands, " "), binder)
 }
 
 func genGateOp(op Op) string {
@@ -464,11 +470,14 @@ func genGadgetBody(inAssignment []ExArg, gadget ExGadget) string {
 		lines[i] = genLine(app, gateVars[i], inAssignment, gateVars)
 	}
 	outs := operandExprs(gadget.Outputs, inAssignment, gateVars)
-	result := outs[0]
-	if len(gadget.Outputs) > 1 {
-		result = fmt.Sprintf("vec![%s]", strings.Join(outs, ", "))
+	lastLine := "    True"
+	if len(outs) != 0 {
+		result := outs[0]
+		if len(gadget.Outputs) > 1 {
+			result = fmt.Sprintf("vec![%s]", strings.Join(outs, ", "))
+		}
+		lastLine = fmt.Sprintf("    k %s", result)
 	}
-	lastLine := fmt.Sprintf("    k %s", result)
 	return strings.Join(append(lines, lastLine), "")
 }
 
