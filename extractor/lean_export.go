@@ -401,13 +401,6 @@ func genCallbackGate(gateVar string, op Op, operands []string, args []Operand) s
 			return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
 		}
 		return fmt.Sprintf("    ∃%s, %s vec![%s] %s ∧\n", gateName, genGateOp(op), strings.Join(operands, ", "), gateName)
-	case OpToBinary:
-		is_const := reflect.TypeOf(args[0]) == reflect.TypeOf(Const{})
-		if is_const {
-			operands[0] = fmt.Sprintf("(%s:F)", operands[0])
-			return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
-		}
-		return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
 	default:
 		return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
 	}
