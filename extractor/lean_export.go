@@ -48,11 +48,11 @@ func ExportGadgets(exGadgets []ExGadget) string {
 	return strings.Join(gadgets, "\n\n")
 }
 
-func ExportCircuit(circuit ExCircuit) string {
+func ExportCircuit(circuit ExCircuit, name string) string {
 	gadgets := ExportGadgets(circuit.Gadgets)
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
-	prelude := ExportPrelude(circuit.Name, circuit.Field.ScalarField())
-	footer := ExportFooter(circuit.Name)
+	prelude := ExportPrelude(name, circuit.Field.ScalarField())
+	footer := ExportFooter(name)
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, gadgets, circ, footer)
 }
 
@@ -179,7 +179,7 @@ func getStructName(circuit any) string {
 	return reflect.TypeOf(circuit).Elem().Name()
 }
 
-func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
+func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace string) (string, error) {
 	schema, err := GetSchema(circuit)
 	if err != nil {
 		return "", err
@@ -211,23 +211,32 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 		Field:   api.Field,
 		Name:    name,
 	}
-	out := ExportCircuit(extractorCircuit)
+	out := ExportCircuit(extractorCircuit, namespace)
 	return out, nil
 }
 
-func GadgetToLean(circuit abstractor.GadgetDefinition, field ecc.ID) (string, error) {
+func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
+	name := getStructName(circuit)
+	return CircuitToLeanWithName(circuit, field, name)
+}
+
+func GadgetToLeanWithName(circuit abstractor.GadgetDefinition, field ecc.ID, namespace string) (string, error) {
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
 		Field:   field,
 	}
-	name := getStructName(circuit)
 
 	api.DefineGadget(circuit)
 	gadgets := ExportGadgets(api.Gadgets)
-	prelude := ExportPrelude(name, api.Field.ScalarField())
-	footer := ExportFooter(name)
+	prelude := ExportPrelude(namespace, api.Field.ScalarField())
+	footer := ExportFooter(namespace)
 	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets, footer), nil
+}
+
+func GadgetToLean(circuit abstractor.GadgetDefinition, field ecc.ID) (string, error) {
+	name := getStructName(circuit)
+	return GadgetToLeanWithName(circuit, field, name)
 }
 
 func genNestedArrays(a ExArgType) string {
