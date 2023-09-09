@@ -262,10 +262,10 @@ func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.Gadget
 		Field:   field,
 	}
 
-    for _, gadget := range gadgets {
-        api.DefineGadget(gadget)
-    }
-	
+	for _, gadget := range gadgets {
+		api.DefineGadget(gadget)
+	}
+
 	gadgets_string := ExportGadgets(api.Gadgets)
 	prelude := ExportPrelude(namespace, api.Field.ScalarField())
 	footer := ExportFooter(namespace)
