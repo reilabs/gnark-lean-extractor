@@ -437,30 +437,30 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 		}
 	}
 
-    val := reflect.ValueOf(gadget).Elem()
-    for i:=0; i<val.NumField();i++{
-    	typeField := val.Field(i).Kind()
-    	if typeField == reflect.Int ||
-    		typeField == reflect.Int8 ||
-    		typeField == reflect.Int16 ||
-    		typeField == reflect.Int32 ||
-    		typeField == reflect.Int64 {
-    		suffix += fmt.Sprintf("_%d", val.Field(i).Int())
-    	} else if typeField == reflect.Uint ||
-    		typeField == reflect.Uint8 ||
-    		typeField == reflect.Uint16 ||
-    		typeField == reflect.Uint32 ||
-    		typeField == reflect.Uint64 {
-    		suffix += fmt.Sprintf("_%d", val.Field(i).Uint())
-    	} else if typeField == reflect.Uintptr ||
-    		typeField == reflect.Float32 ||
-    		typeField == reflect.Float64 ||
-    		typeField == reflect.Complex64 ||
-    		typeField == reflect.Complex128 {
-    		fmt.Printf("-- Gadget name doesn't differentiate yet between different initialised values of type %+v.\n", typeField)
-    		fmt.Print("-- Proceed with caution\n", typeField)
-    	}
-    }
+	val := reflect.ValueOf(gadget).Elem()
+	for i := 0; i < val.NumField(); i++ {
+		typeField := val.Field(i).Kind()
+		if typeField == reflect.Int ||
+			typeField == reflect.Int8 ||
+			typeField == reflect.Int16 ||
+			typeField == reflect.Int32 ||
+			typeField == reflect.Int64 {
+			suffix += fmt.Sprintf("_%d", val.Field(i).Int())
+		} else if typeField == reflect.Uint ||
+			typeField == reflect.Uint8 ||
+			typeField == reflect.Uint16 ||
+			typeField == reflect.Uint32 ||
+			typeField == reflect.Uint64 {
+			suffix += fmt.Sprintf("_%d", val.Field(i).Uint())
+		} else if typeField == reflect.Uintptr ||
+			typeField == reflect.Float32 ||
+			typeField == reflect.Float64 ||
+			typeField == reflect.Complex64 ||
+			typeField == reflect.Complex128 {
+			fmt.Printf("-- Gadget name doesn't differentiate yet between different initialised values of type %+v.\n", typeField)
+			fmt.Print("-- Proceed with caution\n", typeField)
+		}
+	}
 	name := fmt.Sprintf("%s%s", reflect.TypeOf(gadget).Elem().Name(), suffix)
 
 	ptr_gadget := getGadgetByName(ce.Gadgets, name)
