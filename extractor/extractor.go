@@ -360,11 +360,12 @@ func (ce *CodeExtractor) IsBoolean(v frontend.Variable) bool {
 }
 
 func (ce *CodeExtractor) Field() *big.Int {
-	panic("implement me")
+	scalarField := ce.FieldID.ScalarField()
+	return new(big.Int).Set(scalarField)
 }
 
 func (ce *CodeExtractor) FieldBitLen() int {
-	panic("implement me")
+	return ce.FieldID.ScalarField().BitLen()
 }
 
 func (ce *CodeExtractor) Commit(...frontend.Variable) (frontend.Variable, error) {
