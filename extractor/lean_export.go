@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
@@ -13,7 +14,15 @@ import (
 	"github.com/consensys/gnark/frontend/schema"
 )
 
+func isWhitespacePresent(input string) bool {
+	return regexp.MustCompile(`\s`).MatchString(input)
+}
+
 func ExportPrelude(name string, order *big.Int) string {
+	trimmedName := strings.TrimSpace(name)
+	if isWhitespacePresent(trimmedName) {
+		panic("Whitespace isn't allowed in namespace tag")
+	}
 	s := fmt.Sprintf(`import ProvenZk.Gates
 import ProvenZk.Ext.Vector
 
@@ -21,13 +30,17 @@ namespace %s
 
 def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
-abbrev F := ZMod Order`, name, order.Text(16))
+abbrev F := ZMod Order`, trimmedName, order.Text(16))
 
 	return s
 }
 
 func ExportFooter(name string) string {
-	s := fmt.Sprintf(`end %s`, name)
+	trimmedName := strings.TrimSpace(name)
+	if isWhitespacePresent(trimmedName) {
+		panic("Whitespace isn't allowed in namespace tag")
+	}
+	s := fmt.Sprintf(`end %s`, trimmedName)
 	return s
 }
 
@@ -223,23 +236,40 @@ func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	return CircuitToLeanWithName(circuit, field, name)
 }
 
-func GadgetToLeanWithName(circuit abstractor.GadgetDefinition, field ecc.ID, namespace string) (string, error) {
+func GadgetToLeanWithName(gadget abstractor.GadgetDefinition, field ecc.ID, namespace string) (string, error) {
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
 		Field:   field,
 	}
 
-	api.DefineGadget(circuit)
+	api.DefineGadget(gadget)
 	gadgets := ExportGadgets(api.Gadgets)
 	prelude := ExportPrelude(namespace, api.Field.ScalarField())
 	footer := ExportFooter(namespace)
 	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets, footer), nil
 }
 
-func GadgetToLean(circuit abstractor.GadgetDefinition, field ecc.ID) (string, error) {
-	name := getStructName(circuit)
-	return GadgetToLeanWithName(circuit, field, name)
+func GadgetToLean(gadget abstractor.GadgetDefinition, field ecc.ID) (string, error) {
+	name := getStructName(gadget)
+	return GadgetToLeanWithName(gadget, field, name)
+}
+
+func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.GadgetDefinition) (string, error) {
+	api := CodeExtractor{
+		Code:    []App{},
+		Gadgets: []ExGadget{},
+		Field:   field,
+	}
+
+    for _, gadget := range gadgets {
+        api.DefineGadget(gadget)
+    }
+	
+	gadgets_string := ExportGadgets(api.Gadgets)
+	prelude := ExportPrelude(namespace, api.Field.ScalarField())
+	footer := ExportFooter(namespace)
+	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets_string, footer), nil
 }
 
 func genNestedArrays(a ExArgType) string {
