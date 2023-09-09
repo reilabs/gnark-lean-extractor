@@ -212,7 +212,7 @@ type ExCircuit struct {
 type CodeExtractor struct {
 	Code    []App
 	Gadgets []ExGadget
-	Field   ecc.ID
+	FieldID   ecc.ID
 }
 
 func sanitizeVars(args ...frontend.Variable) []Operand {
@@ -278,7 +278,7 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
-	nbBits := ce.Field.ScalarField().BitLen()
+	nbBits := ce.FieldID.ScalarField().BitLen()
 	if len(n) == 1 {
 		nbBits = n[0]
 		if nbBits < 0 {
@@ -348,6 +348,26 @@ func (ce *CodeExtractor) Println(a ...frontend.Variable) {
 }
 
 func (ce *CodeExtractor) Compiler() frontend.Compiler {
+	return ce
+}
+
+func (ce *CodeExtractor) MarkBoolean(v frontend.Variable) {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) IsBoolean(v frontend.Variable) bool {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) Field() *big.Int {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) FieldBitLen() int {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) Commit(...frontend.Variable) (frontend.Variable, error) {
 	panic("implement me")
 }
 

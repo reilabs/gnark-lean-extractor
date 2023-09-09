@@ -210,7 +210,7 @@ func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace s
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
-		Field:   field,
+		FieldID:   field,
 	}
 
 	err = circuit.AbsDefine(&api)
@@ -224,7 +224,7 @@ func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace s
 		Inputs:  GetExArgs(circuit, schema.Fields),
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
-		Field:   api.Field,
+		Field:   api.FieldID,
 		Name:    name,
 	}
 	out := ExportCircuit(extractorCircuit, namespace)
@@ -240,12 +240,12 @@ func GadgetToLeanWithName(gadget abstractor.GadgetDefinition, field ecc.ID, name
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
-		Field:   field,
+		FieldID:   field,
 	}
 
 	api.DefineGadget(gadget)
 	gadgets := ExportGadgets(api.Gadgets)
-	prelude := ExportPrelude(namespace, api.Field.ScalarField())
+	prelude := ExportPrelude(namespace, api.FieldID.ScalarField())
 	footer := ExportFooter(namespace)
 	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets, footer), nil
 }
@@ -259,7 +259,7 @@ func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.Gadget
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
-		Field:   field,
+		FieldID:   field,
 	}
 
 	for _, gadget := range gadgets {
@@ -267,7 +267,7 @@ func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.Gadget
 	}
 
 	gadgets_string := ExportGadgets(api.Gadgets)
-	prelude := ExportPrelude(namespace, api.Field.ScalarField())
+	prelude := ExportPrelude(namespace, api.FieldID.ScalarField())
 	footer := ExportFooter(namespace)
 	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets_string, footer), nil
 }
