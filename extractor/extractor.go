@@ -212,7 +212,7 @@ type ExCircuit struct {
 type CodeExtractor struct {
 	Code    []App
 	Gadgets []ExGadget
-	FieldID   ecc.ID
+	FieldID ecc.ID
 }
 
 func sanitizeVars(args ...frontend.Variable) []Operand {

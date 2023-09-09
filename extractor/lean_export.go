@@ -210,7 +210,7 @@ func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace s
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
-		FieldID:   field,
+		FieldID: field,
 	}
 
 	err = circuit.AbsDefine(&api)
@@ -240,7 +240,7 @@ func GadgetToLeanWithName(gadget abstractor.GadgetDefinition, field ecc.ID, name
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
-		FieldID:   field,
+		FieldID: field,
 	}
 
 	api.DefineGadget(gadget)
@@ -259,7 +259,7 @@ func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.Gadget
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
-		FieldID:   field,
+		FieldID: field,
 	}
 
 	for _, gadget := range gadgets {
