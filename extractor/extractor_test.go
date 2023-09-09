@@ -263,7 +263,8 @@ func TestTwoGadgets(t *testing.T) {
 func TestExtractGadgets(t *testing.T) {
 	assignment_1 := DummyHash{}
 	assignment_2 := MySecondWidget{Num: 11}
-	out, err := ExtractGadgets("MultipleGadgets", ecc.BN254, &assignment_1, &assignment_2)
+	assignment_3 := MySecondWidget{Num: 9}
+	out, err := ExtractGadgets("MultipleGadgets", ecc.BN254, &assignment_1, &assignment_2, &assignment_3)
 	if err != nil {
 		log.Fatal(err)
 	}
