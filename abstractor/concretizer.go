@@ -1,9 +1,10 @@
 package abstractor
 
 import (
-	"github.com/consensys/gnark/backend/hint"
-	"github.com/consensys/gnark/frontend"
 	"math/big"
+
+	"github.com/consensys/gnark/constraint/solver"
+	"github.com/consensys/gnark/frontend"
 )
 
 type ConcreteGadget struct {
@@ -110,7 +111,7 @@ func (c *Concretizer) Compiler() frontend.Compiler {
 	return c.api.Compiler()
 }
 
-func (c *Concretizer) NewHint(f hint.Function, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
+func (c *Concretizer) NewHint(f solver.Hint, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
 	return c.api.NewHint(f, nbOutputs, inputs...)
 }
 

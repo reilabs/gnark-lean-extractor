@@ -9,7 +9,7 @@ import (
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend/hint"
+	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
 )
@@ -321,7 +321,7 @@ func (ce *CodeExtractor) Compiler() frontend.Compiler {
 	panic("implement me")
 }
 
-func (ce *CodeExtractor) NewHint(f hint.Function, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
+func (ce *CodeExtractor) NewHint(f solver.Hint, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
 	panic("implement me")
 }
 
