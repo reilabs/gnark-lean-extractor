@@ -118,7 +118,7 @@ func (g *ExGadget) isOp() {}
 
 func arrayToSlice(v reflect.Value) []frontend.Variable {
 	if v.Len() == 0 {
-		return []frontend.Variable{} 
+		return []frontend.Variable{}
 	}
 
 	switch v.Index(0).Kind() {
