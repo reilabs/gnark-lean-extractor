@@ -118,44 +118,25 @@ func (g *ExGadget) isOp() {}
 
 func arrayToSlice(v reflect.Value) []frontend.Variable {
 	if v.Len() == 0 {
-		panic("Slice in flattenSlice can't have length of 0")
+		return []frontend.Variable{} 
 	}
 
-    switch v.Index(0).Kind() {
+	switch v.Index(0).Kind() {
 	case reflect.Array:
 		args := []frontend.Variable{}
 		for i := 0; i < v.Len(); i++ {
 			args = append(args, arrayToSlice(v.Index(i)))
 		}
 		return args
-    case reflect.Interface:
+	case reflect.Interface:
 		res := make([]frontend.Variable, v.Len())
 		for i := 0; i < v.Len(); i++ {
-		    res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
+			res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
 		}
 		return res
-    default:
-        return []frontend.Variable{}
-    }
-
-	// if v.Index(0).Kind() == reflect.Array {
-	// 	args := []frontend.Variable{}
-	// 	for i := 0; i < v.Len(); i++ {
-	// 		args = append(args, arrayToSlice(v.Index(i)))
-	// 	}
-	// 	return args
-	// }
-
-	// res := make([]frontend.Variable, v.Len())
-	// for i := 0; i < v.Len(); i++ {
-	//     switch v.Index(i).Kind() {
-	//     case reflect.Interface:
-    // 		res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
-	//     default:
-	//         return []frontend.Variable{}
-	//     }
-	// }
-	// return res
+	default:
+		return []frontend.Variable{}
+	}
 }
 
 // flattenSlice takes a slice and returns a single dimension
@@ -164,7 +145,7 @@ func arrayToSlice(v reflect.Value) []frontend.Variable {
 // processed by sanitizeVars.
 func flattenSlice(value reflect.Value) []frontend.Variable {
 	if value.Len() == 0 {
-		panic("Slice in flattenSlice can't have length of 0")
+		return []frontend.Variable{}
 	}
 	if value.Index(0).Kind() == reflect.Slice {
 		args := []frontend.Variable{}
@@ -190,7 +171,7 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
 			// the field is unaddressable.
-			args = append(args, ArrayToSlice(v))
+			args = append(args, arrayToSlice(v))
 		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
