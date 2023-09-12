@@ -116,14 +116,46 @@ type ExGadget struct {
 
 func (g *ExGadget) isOp() {}
 
-func ArrayToSlice(v reflect.Value) []frontend.Variable {
-	res := make([]frontend.Variable, v.Len())
-
-	for i := 0; i < v.Len(); i++ {
-		res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
+func arrayToSlice(v reflect.Value) []frontend.Variable {
+	if v.Len() == 0 {
+		panic("Slice in flattenSlice can't have length of 0")
 	}
 
-	return res
+    switch v.Index(0).Kind() {
+	case reflect.Array:
+		args := []frontend.Variable{}
+		for i := 0; i < v.Len(); i++ {
+			args = append(args, arrayToSlice(v.Index(i)))
+		}
+		return args
+    case reflect.Interface:
+		res := make([]frontend.Variable, v.Len())
+		for i := 0; i < v.Len(); i++ {
+		    res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
+		}
+		return res
+    default:
+        return []frontend.Variable{}
+    }
+
+	// if v.Index(0).Kind() == reflect.Array {
+	// 	args := []frontend.Variable{}
+	// 	for i := 0; i < v.Len(); i++ {
+	// 		args = append(args, arrayToSlice(v.Index(i)))
+	// 	}
+	// 	return args
+	// }
+
+	// res := make([]frontend.Variable, v.Len())
+	// for i := 0; i < v.Len(); i++ {
+	//     switch v.Index(i).Kind() {
+	//     case reflect.Interface:
+    // 		res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
+	//     default:
+	//         return []frontend.Variable{}
+	//     }
+	// }
+	// return res
 }
 
 // flattenSlice takes a slice and returns a single dimension
