@@ -110,6 +110,19 @@ func TestDummyCircuit(t *testing.T) {
 }
 
 // Example: circuit with constant parameter
+type ReturnItself struct {
+	In_1 []frontend.Variable
+	Out  []frontend.Variable
+}
+
+func (gadget ReturnItself) DefineGadget(api abstractor.API) []frontend.Variable {
+	for i := 0; i < len(gadget.In_1); i++ {
+		gadget.Out[i] = api.Mul(gadget.In_1[i], gadget.In_1[i])
+	}
+
+	return gadget.Out
+}
+
 type SliceGadget struct {
 	In_1 []frontend.Variable
 	In_2 []frontend.Variable
@@ -132,6 +145,14 @@ type CircuitWithParameter struct {
 }
 
 func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
+	D := make([]frontend.Variable, 3)
+	for i := 0; i < len(circuit.Path); i++ {
+		D = api.Call(ReturnItself{
+			In_1: circuit.Path,
+			Out: D,
+		})
+	}
+
 	api.FromBinary(circuit.Path...)
 	bin := api.ToBinary(circuit.In)
 	bin = api.ToBinary(circuit.Param)

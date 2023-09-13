@@ -244,6 +244,10 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		case []frontend.Variable:
 			opsArray := sanitizeVars(arg.([]frontend.Variable)...)
 			ops = append(ops, ProjArray{opsArray})
+		case nil:
+			// This takes care of uninitialised fields that are
+			// passed to gadgets
+			ops = append(ops, Const{big.NewInt(int64(0))})
 		default:
 			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
 			panic("invalid argument")
