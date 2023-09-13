@@ -149,7 +149,7 @@ func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
 	for i := 0; i < len(circuit.Path); i++ {
 		D = api.Call(ReturnItself{
 			In_1: circuit.Path,
-			Out: D,
+			Out:  D,
 		})
 	}
 
