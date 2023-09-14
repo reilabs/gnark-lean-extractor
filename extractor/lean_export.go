@@ -28,9 +28,6 @@ import ProvenZk.Ext.Vector
 
 namespace %s
 
-set_option maxRecDepth 1200
-set_option maxHeartbeats 20000000
-
 def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order`, trimmedName, order.Text(16))
