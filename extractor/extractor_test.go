@@ -291,3 +291,24 @@ func TestExtractGadgets(t *testing.T) {
 	}
 	fmt.Println(out)
 }
+
+func TestExtractCircuits(t *testing.T) {
+	assignment_1 := TwoGadgets{Num: 11}
+	assignment_2 := MerkleRecover{}
+
+	dim_1 := 3
+	dim_2 := 3
+	doubleSlice := make([][]frontend.Variable, dim_1)
+	for i := 0; i < int(dim_1); i++ {
+		doubleSlice[i] = make([]frontend.Variable, dim_2)
+	}
+	assignment_3 := ToBinaryCircuit{Double: doubleSlice}
+	assignment_4 := TwoGadgets{Num: 6}
+	assignment_5 := TwoGadgets{Num: 6}
+
+	out, err := ExtractCircuits("MultipleCircuits", ecc.BN254, &assignment_3, &assignment_2, &assignment_1, &assignment_4, &assignment_5)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(out)
+}

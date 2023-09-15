@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
+	"golang.org/x/exp/slices"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
@@ -218,14 +219,11 @@ func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace s
 		return "", err
 	}
 
-	name := getStructName(circuit)
-
 	extractorCircuit := ExCircuit{
 		Inputs:  GetExArgs(circuit, schema.Fields),
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 		Field:   api.FieldID,
-		Name:    name,
 	}
 	out := ExportCircuit(extractorCircuit, namespace)
 	return out, nil
@@ -234,6 +232,64 @@ func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace s
 func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
 	name := getStructName(circuit)
 	return CircuitToLeanWithName(circuit, field, name)
+}
+
+func ExtractCircuits(namespace string, field ecc.ID, circuits ...abstractor.Circuit) (string, error) {
+	api := CodeExtractor{
+		Code:    []App{},
+		Gadgets: []ExGadget{},
+		FieldID: field,
+	}
+
+	var circuits_extracted []string
+	var past_circuits []string
+
+	extractorCircuit := ExCircuit{
+		Inputs:  []ExArg{},
+		Gadgets: []ExGadget{},
+		Code:    []App{},
+		Field:   api.FieldID,
+	}
+
+	for _, circuit := range circuits {
+		schema, err := GetSchema(circuit)
+		if err != nil {
+			return "", err
+		}
+		args := GetExArgs(circuit, schema.Fields)
+		name := generateUniqueName(circuit, args)
+		if slices.Contains(past_circuits, name) {
+			continue
+		}
+		past_circuits = append(past_circuits, name)
+
+		err = CircuitInit(circuit, schema)
+		if err != nil {
+			fmt.Println("CircuitInit error!")
+			fmt.Println(err.Error())
+		}
+		err = circuit.AbsDefine(&api)
+		if err != nil {
+			return "", err
+		}
+
+		extractorCircuit.Inputs = args
+		extractorCircuit.Code = api.Code
+
+		circ := fmt.Sprintf("def %s %s: Prop :=\n%s", name, genArgs(extractorCircuit.Inputs), genCircuitBody(extractorCircuit))
+		circuits_extracted = append(circuits_extracted, circ)
+
+		// Resetting elements for next circuit
+		extractorCircuit.Inputs = []ExArg{}
+		extractorCircuit.Code = []App{}
+		api.Code = []App{}
+	}
+
+
+	prelude := ExportPrelude(namespace, extractorCircuit.Field.ScalarField())
+	gadgets := ExportGadgets(api.Gadgets)
+	footer := ExportFooter(namespace)
+	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, gadgets, strings.Join(circuits_extracted, "\n\n"), footer), nil
 }
 
 func GadgetToLeanWithName(gadget abstractor.GadgetDefinition, field ecc.ID, namespace string) (string, error) {

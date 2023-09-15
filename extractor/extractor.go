@@ -219,7 +219,6 @@ type ExCircuit struct {
 	Gadgets []ExGadget
 	Code    []App
 	Field   ecc.ID
-	Name    string
 }
 
 type CodeExtractor struct {
@@ -452,6 +451,46 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
+func generateUniqueName(element any, args []ExArg) string {
+	// To distinguish between gadgets instantiated with different array
+	// sizes, add a suffix to the name. The suffix of each instantiation
+	// is made up of the concatenation of the length of all the array
+	// fields in the gadget
+	suffix := ""
+	for _, a := range args {
+		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
+			suffix += "_"
+			suffix += strings.Join(getSize(a.Type), "_")
+		}
+	}
+
+	val := reflect.ValueOf(element).Elem()
+	for i := 0; i < val.NumField(); i++ {
+		typeField := val.Field(i).Kind()
+		if typeField == reflect.Int ||
+			typeField == reflect.Int8 ||
+			typeField == reflect.Int16 ||
+			typeField == reflect.Int32 ||
+			typeField == reflect.Int64 {
+			suffix += fmt.Sprintf("_%d", val.Field(i).Int())
+		} else if typeField == reflect.Uint ||
+			typeField == reflect.Uint8 ||
+			typeField == reflect.Uint16 ||
+			typeField == reflect.Uint32 ||
+			typeField == reflect.Uint64 {
+			suffix += fmt.Sprintf("_%d", val.Field(i).Uint())
+		} else if typeField == reflect.Uintptr ||
+			typeField == reflect.Float32 ||
+			typeField == reflect.Float64 ||
+			typeField == reflect.Complex64 ||
+			typeField == reflect.Complex128 {
+			fmt.Printf("-- Gadget name doesn't differentiate yet between different initialised values of type %+v.\n", typeField)
+			fmt.Print("-- Proceed with caution\n", typeField)
+		}
+	}
+	return fmt.Sprintf("%s%s", reflect.TypeOf(element).Elem().Name(), suffix)
+}
+
 func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	for _, gadget := range gadgets {
 		if gadget.Name == name {
@@ -480,43 +519,7 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	arity := len(schema.Fields)
 	args := GetExArgs(gadget, schema.Fields)
 
-	// To distinguish between gadgets instantiated with different array
-	// sizes, add a suffix to the name. The suffix of each instantiation
-	// is made up of the concatenation of the length of all the array
-	// fields in the gadget
-	suffix := ""
-	for _, a := range args {
-		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
-			suffix += "_"
-			suffix += strings.Join(getSize(a.Type), "_")
-		}
-	}
-
-	val := reflect.ValueOf(gadget).Elem()
-	for i := 0; i < val.NumField(); i++ {
-		typeField := val.Field(i).Kind()
-		if typeField == reflect.Int ||
-			typeField == reflect.Int8 ||
-			typeField == reflect.Int16 ||
-			typeField == reflect.Int32 ||
-			typeField == reflect.Int64 {
-			suffix += fmt.Sprintf("_%d", val.Field(i).Int())
-		} else if typeField == reflect.Uint ||
-			typeField == reflect.Uint8 ||
-			typeField == reflect.Uint16 ||
-			typeField == reflect.Uint32 ||
-			typeField == reflect.Uint64 {
-			suffix += fmt.Sprintf("_%d", val.Field(i).Uint())
-		} else if typeField == reflect.Uintptr ||
-			typeField == reflect.Float32 ||
-			typeField == reflect.Float64 ||
-			typeField == reflect.Complex64 ||
-			typeField == reflect.Complex128 {
-			fmt.Printf("-- Gadget name doesn't differentiate yet between different initialised values of type %+v.\n", typeField)
-			fmt.Print("-- Proceed with caution\n", typeField)
-		}
-	}
-	name := fmt.Sprintf("%s%s", reflect.TypeOf(gadget).Elem().Name(), suffix)
+	name := generateUniqueName(gadget, args)
 
 	ptr_gadget := getGadgetByName(ce.Gadgets, name)
 	if ptr_gadget != nil {
