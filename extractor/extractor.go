@@ -237,7 +237,17 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		case Integer:
 			ops = append(ops, arg.(Operand))
 		case int:
-			ops = append(ops, Const{big.NewInt(int64(arg.(int)))})
+		case int8:
+		case int16:
+		case int32:
+		case int64:
+			ops = append(ops, Const{new(big.Int).SetInt64(arg.(int64))})
+		case uint:
+		case uint8:
+		case uint16:
+		case uint32:
+		case uint64:
+			ops = append(ops, Const{new(big.Int).SetUint64(arg.(uint64))})
 		case big.Int:
 			casted := arg.(big.Int)
 			ops = append(ops, Const{&casted})

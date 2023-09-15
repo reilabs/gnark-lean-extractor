@@ -231,7 +231,7 @@ func TestMerkleRecover(t *testing.T) {
 type MyWidget struct {
 	Test_1 frontend.Variable
 	Test_2 frontend.Variable
-	Num    int
+	Num    uint64
 }
 
 func (gadget MyWidget) DefineGadget(api abstractor.API) []frontend.Variable {
@@ -250,7 +250,7 @@ type MySecondWidget struct {
 
 func (gadget MySecondWidget) DefineGadget(api abstractor.API) []frontend.Variable {
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
-	snd := api.Call(MyWidget{gadget.Test_1, gadget.Test_2, gadget.Num})[0]
+	snd := api.Call(MyWidget{gadget.Test_1, gadget.Test_2, uint64(gadget.Num)})[0]
 	api.Mul(mul, snd)
 	return []frontend.Variable{}
 }
