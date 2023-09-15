@@ -285,7 +285,6 @@ func ExtractCircuits(namespace string, field ecc.ID, circuits ...abstractor.Circ
 		api.Code = []App{}
 	}
 
-
 	prelude := ExportPrelude(namespace, extractorCircuit.Field.ScalarField())
 	gadgets := ExportGadgets(api.Gadgets)
 	footer := ExportFooter(namespace)
