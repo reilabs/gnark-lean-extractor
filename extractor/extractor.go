@@ -415,14 +415,15 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	switch v.(type) {
 	case Const:
 		return v.(Const).Value, true
-	case Proj: {
-		switch v.(Proj).Operand.(type) {
-		case Const:
-			return v.(Proj).Operand.(Const).Value, true
-		default:
-			return nil, false
+	case Proj:
+		{
+			switch v.(Proj).Operand.(type) {
+			case Const:
+				return v.(Proj).Operand.(Const).Value, true
+			default:
+				return nil, false
+			}
 		}
-	}
 	case int:
 		return new(big.Int).SetInt64(int64(v.(int))), true
 	case int8:
