@@ -237,15 +237,23 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		case Integer:
 			ops = append(ops, arg.(Operand))
 		case int:
+			ops = append(ops, Const{new(big.Int).SetInt64(int64(arg.(int)))})
 		case int8:
+			ops = append(ops, Const{new(big.Int).SetInt64(int64(arg.(int8)))})
 		case int16:
+			ops = append(ops, Const{new(big.Int).SetInt64(int64(arg.(int16)))})
 		case int32:
+			ops = append(ops, Const{new(big.Int).SetInt64(int64(arg.(int32)))})
 		case int64:
 			ops = append(ops, Const{new(big.Int).SetInt64(arg.(int64))})
 		case uint:
+			ops = append(ops, Const{new(big.Int).SetUint64(uint64(arg.(uint)))})
 		case uint8:
+			ops = append(ops, Const{new(big.Int).SetUint64(uint64(arg.(uint8)))})
 		case uint16:
+			ops = append(ops, Const{new(big.Int).SetUint64(uint64(arg.(uint16)))})
 		case uint32:
+			ops = append(ops, Const{new(big.Int).SetUint64(uint64(arg.(uint32)))})
 		case uint64:
 			ops = append(ops, Const{new(big.Int).SetUint64(arg.(uint64))})
 		case big.Int:
@@ -407,15 +415,34 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	switch v.(type) {
 	case Const:
 		return v.(Const).Value, true
-	case Proj:
+	case Proj: {
 		switch v.(Proj).Operand.(type) {
 		case Const:
 			return v.(Proj).Operand.(Const).Value, true
 		default:
 			return nil, false
 		}
+	}
+	case int:
+		return new(big.Int).SetInt64(int64(v.(int))), true
+	case int8:
+		return new(big.Int).SetInt64(int64(v.(int8))), true
+	case int16:
+		return new(big.Int).SetInt64(int64(v.(int16))), true
+	case int32:
+		return new(big.Int).SetInt64(int64(v.(int32))), true
 	case int64:
-		return big.NewInt(v.(int64)), true
+		return new(big.Int).SetInt64(v.(int64)), true
+	case uint:
+		return new(big.Int).SetUint64(uint64(v.(uint))), true
+	case uint8:
+		return new(big.Int).SetUint64(uint64(v.(uint8))), true
+	case uint16:
+		return new(big.Int).SetUint64(uint64(v.(uint16))), true
+	case uint32:
+		return new(big.Int).SetUint64(uint64(v.(uint32))), true
+	case uint64:
+		return new(big.Int).SetUint64(v.(uint64)), true
 	case big.Int:
 		casted := v.(big.Int)
 		return &casted, true
