@@ -41,7 +41,7 @@ func checkOutput(t *testing.T, testOutput string) {
 	}
 	testResultHash := h.Sum(nil)
 	if !bytes.Equal(correctHash, testResultHash) {
-		t.Logf("This circuit doesn't match the result in the test folder\n\n%s",testOutput)
+		t.Logf("This circuit doesn't match the result in the test folder\n\n%s", testOutput)
 		t.Fail()
 	}
 }
