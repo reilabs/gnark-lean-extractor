@@ -21,6 +21,7 @@ type IntArrayGadget struct {
 
 func (gadget IntArrayGadget) DefineGadget(api abstractor.API) []frontend.Variable {
 	r := api.FromBinary(gadget.In...)
+	api.Mul(gadget.Matrix[0], gadget.Matrix[1])
 	return []frontend.Variable{r}
 }
 

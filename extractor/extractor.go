@@ -125,25 +125,17 @@ func arrayToSlice(v reflect.Value) []frontend.Variable {
 	case reflect.Array:
 		args := []frontend.Variable{}
 		for i := 0; i < v.Len(); i++ {
-			args = append(args, arrayToSlice(v.Index(i)))
+			arg := arrayToSlice(v.Index(i))
+			args = append(args, arg...)
 		}
 		return args
 	case reflect.Interface:
-		res := make([]frontend.Variable, v.Len())
+		res := []frontend.Variable{}
 		for i := 0; i < v.Len(); i++ {
-			res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
-		}
-		return res
-	case reflect.Int:
-		res := make([]frontend.Variable, v.Len())
-		for i := 0; i < v.Len(); i++ {
-			element := v.Index(i).Int()
-			op := Const{new(big.Int).SetInt64(element)}
-			res[i] = op
+			res = append(res, v.Index(i).Elem().Interface().(frontend.Variable))
 		}
 		return res
 	default:
-		fmt.Printf("--Ignoring field of type %+v in arrayToSlice Call\n", v.Index(0).Kind())
 		return []frontend.Variable{}
 	}
 }
@@ -159,7 +151,8 @@ func flattenSlice(value reflect.Value) []frontend.Variable {
 	if value.Index(0).Kind() == reflect.Slice {
 		args := []frontend.Variable{}
 		for i := 0; i < value.Len(); i++ {
-			args = append(args, flattenSlice(value.Index(i)))
+			arg := flattenSlice(value.Index(i))
+			args = append(args, arg...)
 		}
 		return args
 	}
@@ -176,15 +169,15 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		v := rv.FieldByName(fld.Name)
 		switch v.Kind() {
 		case reflect.Slice:
-			args = append(args, flattenSlice(v))
+			arg := flattenSlice(v)
+			args = append(args, arg...)
 		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
 			// the field is unaddressable.
-			args = append(args, arrayToSlice(v))
+			arg := arrayToSlice(v)
+			args = append(args, arg...)
 		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
-		default:
-			fmt.Printf("--Ignoring field of type %+v in %s.Call\n", v.Kind(), g.Name)
 		}
 	}
 
@@ -483,26 +476,14 @@ func generateUniqueName(element any, args []ExArg) string {
 
 	val := reflect.ValueOf(element).Elem()
 	for i := 0; i < val.NumField(); i++ {
-		typeField := val.Field(i).Kind()
-		if typeField == reflect.Int ||
-			typeField == reflect.Int8 ||
-			typeField == reflect.Int16 ||
-			typeField == reflect.Int32 ||
-			typeField == reflect.Int64 {
+		switch val.Field(i).Kind() {
+		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			suffix += fmt.Sprintf("_%d", val.Field(i).Int())
-		} else if typeField == reflect.Uint ||
-			typeField == reflect.Uint8 ||
-			typeField == reflect.Uint16 ||
-			typeField == reflect.Uint32 ||
-			typeField == reflect.Uint64 {
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			suffix += fmt.Sprintf("_%d", val.Field(i).Uint())
-		} else if typeField == reflect.Uintptr ||
-			typeField == reflect.Float32 ||
-			typeField == reflect.Float64 ||
-			typeField == reflect.Complex64 ||
-			typeField == reflect.Complex128 {
-			fmt.Printf("-- Gadget name doesn't differentiate yet between different initialised values of type %+v.\n", typeField)
-			fmt.Print("-- Proceed with caution\n", typeField)
+		case reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
+			fmt.Printf("-- Gadget name doesn't differentiate yet between different initialised values of type %+v.\n", val.Field(i).Kind())
+			fmt.Println("-- Proceed with caution")
 		}
 	}
 	return fmt.Sprintf("%s%s", reflect.TypeOf(element).Elem().Name(), suffix)
@@ -517,6 +498,9 @@ func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	return nil
 }
 
+// getSize generates the concatenation of dimensions of
+// a slice/array (i.e. [3][2]frontend.Variable --> ["3","2"])
+// It is used to generate a unique gadget name
 func getSize(elem ExArgType) []string {
 	if elem.Type == nil {
 		return []string{fmt.Sprintf("%d", elem.Size)}
