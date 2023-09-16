@@ -584,60 +584,63 @@ func getArgIndex(operand ProjArray) int {
 
 func checkVector(operand ProjArray, argIdx int, inAssignment []ExArg) bool {
 	switch operand.Proj[0].(Proj).Operand.(type) {
-	case Input: {
-		arg := inAssignment[argIdx]
-		if arg.Type.Size != len(operand.Proj) {
-			return false
-		}
+	case Input:
+		{
+			arg := inAssignment[argIdx]
+			if arg.Type.Size != len(operand.Proj) {
+				return false
+			}
 
-		var lastIndex = operand.Proj[0].(Proj).Index
-		if lastIndex != 0 {
-			return false
-		}
-		for _, op := range operand.Proj[1:] {
-			// Add recursion for nested arrays!
-			switch t := op.(Proj).Operand.(type) {
-			case Input:
-				if t.Index != argIdx {
-					return false
-				}
-				if lastIndex != op.(Proj).Index - 1 {
-					return false
-				}
-				lastIndex += 1
-			default:
+			var lastIndex = operand.Proj[0].(Proj).Index
+			if lastIndex != 0 {
 				return false
 			}
-		}
-		return true
-	}
-	case Gate: {
-		var lastIndex = operand.Proj[0].(Proj).Index
-		if lastIndex != 0 {
-			return false
-		}
-		// Can't do a size check for Gate because it's just a string
-		for _, op := range operand.Proj[1:] {
-			// Add recursion for nested arrays!
-			switch t := op.(Proj).Operand.(type) {
-			case Gate:
-				if t.Index != argIdx {
+			for _, op := range operand.Proj[1:] {
+				// Add recursion for nested arrays!
+				switch t := op.(Proj).Operand.(type) {
+				case Input:
+					if t.Index != argIdx {
+						return false
+					}
+					if lastIndex != op.(Proj).Index-1 {
+						return false
+					}
+					lastIndex += 1
+				default:
 					return false
 				}
-				if lastIndex != op.(Proj).Index - 1 {
-					return false
-				}
-				lastIndex += 1
-			default:
+			}
+			return true
+		}
+	case Gate:
+		{
+			var lastIndex = operand.Proj[0].(Proj).Index
+			if lastIndex != 0 {
 				return false
 			}
+			// Can't do a size check for Gate because it's just a string
+			for _, op := range operand.Proj[1:] {
+				// Add recursion for nested arrays!
+				switch t := op.(Proj).Operand.(type) {
+				case Gate:
+					if t.Index != argIdx {
+						return false
+					}
+					if lastIndex != op.(Proj).Index-1 {
+						return false
+					}
+					lastIndex += 1
+				default:
+					return false
+				}
+			}
+			return true
 		}
-		return true
-	}
-	case Proj: {
-		// TODO. No panic because it's optimisation
-		return false
-	}
+	case Proj:
+		{
+			// TODO. No panic because it's optimisation
+			return false
+		}
 	default:
 		return false
 	}
