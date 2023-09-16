@@ -184,7 +184,7 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		default:
-			fmt.Printf("--Ignoring field of type %+v in ExGadget.Call\n", v.Kind())
+			fmt.Printf("--Ignoring field of type %+v in %s.Call\n", v.Kind(), g.Name)
 		}
 	}
 
