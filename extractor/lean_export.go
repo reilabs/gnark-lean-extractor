@@ -24,8 +24,8 @@ func ExportPrelude(name string, order *big.Int) string {
 	if isWhitespacePresent(trimmedName) {
 		panic("Whitespace isn't allowed in namespace tag")
 	}
-	s := fmt.Sprintf(`import ProvenZk.Gates
-import ProvenZk.Ext.Vector
+	s := fmt.Sprintf(`--import ProvenZk.Gates
+--import ProvenZk.Ext.Vector
 
 set_option linter.unusedVariables false
 

@@ -126,7 +126,11 @@ func arrayToSlice(v reflect.Value) []frontend.Variable {
 		args := []frontend.Variable{}
 		for i := 0; i < v.Len(); i++ {
 			arg := arrayToSlice(v.Index(i))
-			args = append(args, arg...)
+			// The reason to check for len != 0 is to avoid generating
+			// lists of empty nested lists
+			if len(arg) != 0 {
+				args = append(args, arg)
+			}
 		}
 		return args
 	case reflect.Interface:
@@ -152,7 +156,11 @@ func flattenSlice(value reflect.Value) []frontend.Variable {
 		args := []frontend.Variable{}
 		for i := 0; i < value.Len(); i++ {
 			arg := flattenSlice(value.Index(i))
-			args = append(args, arg...)
+			// The reason to check for len != 0 is to avoid generating
+			// lists of empty nested lists
+			if len(arg) != 0 {
+				args = append(args, arg)
+			}
 		}
 		return args
 	}
@@ -170,12 +178,16 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		switch v.Kind() {
 		case reflect.Slice:
 			arg := flattenSlice(v)
-			args = append(args, arg...)
+			if len(arg) != 0 {
+				args = append(args, arg)
+			}			
 		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
 			// the field is unaddressable.
 			arg := arrayToSlice(v)
-			args = append(args, arg...)
+			if len(arg) != 0 {
+				args = append(args, arg)
+			}			
 		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
