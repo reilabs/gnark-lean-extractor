@@ -134,7 +134,16 @@ func arrayToSlice(v reflect.Value) []frontend.Variable {
 			res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
 		}
 		return res
+	case reflect.Int:
+		res := make([]frontend.Variable, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			element := v.Index(i).Int()
+			op := Const{new(big.Int).SetInt64(element)}
+			res[i] = op
+		}
+		return res
 	default:
+		fmt.Printf("--Ignoring field of type %+v in arrayToSlice Call\n", v.Index(0).Kind())
 		return []frontend.Variable{}
 	}
 }
@@ -174,6 +183,8 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 			args = append(args, arrayToSlice(v))
 		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
+		default:
+			fmt.Printf("--Ignoring field of type %+v in ExGadget.Call\n", v.Kind())
 		}
 	}
 

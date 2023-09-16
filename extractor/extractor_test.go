@@ -12,6 +12,52 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Example: Gadget with nested array of int
+type IntArrayGadget struct {
+	In []frontend.Variable
+	Matrix [2]int
+	NestedMatrix [2][2]int
+}
+
+func (gadget IntArrayGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+	r := api.FromBinary(gadget.In...)
+	return []frontend.Variable{r}
+}
+
+type AnotherCircuit struct {
+	In []frontend.Variable
+	Matrix [2][2]int
+}
+
+func (circuit *AnotherCircuit) AbsDefine(api abstractor.API) error {
+	api.Call(IntArrayGadget{
+		circuit.In,
+		circuit.Matrix[0],
+		circuit.Matrix,
+	})
+	return nil
+}
+
+func (circuit AnotherCircuit) Define(api frontend.API) error {
+	return abstractor.Concretize(api, &circuit)
+}
+
+func TestAnotherCircuit(t *testing.T) {
+	m := [2][2]int{
+		{0, 36},
+		{1, 44},
+	}
+	assignment := AnotherCircuit{
+		In: make([]frontend.Variable, 3),
+		Matrix: m,
+	}
+	out, err := CircuitToLean(&assignment, ecc.BN254)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(out)
+}
+
 // Example: Gadget that returns a vector
 type OptimisedVectorGadget struct {
 	In frontend.Variable
