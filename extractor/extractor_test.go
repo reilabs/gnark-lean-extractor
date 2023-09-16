@@ -12,6 +12,15 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+// Example: Gadget that returns a vector
+type OptimisedVectorGadget struct {
+	In   frontend.Variable
+}
+
+func (gadget OptimisedVectorGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+	return api.ToBinary(gadget.In, 3)
+}
+
 // Example: ToBinary behaviour and nested Slice
 type VectorGadget struct {
 	In_1   []frontend.Variable
@@ -291,6 +300,30 @@ func TestExtractGadgets(t *testing.T) {
 	assignment_2 := MySecondWidget{Num: 11}
 	assignment_3 := MySecondWidget{Num: 9}
 	out, err := ExtractGadgets("MultipleGadgets", ecc.BN254, &assignment_1, &assignment_2, &assignment_3)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(out)
+}
+
+func TestExtractGadgetsVectors(t *testing.T) {
+	dim_1 := 3
+	dim_2 := 3
+	doubleSlice := make([][]frontend.Variable, dim_1)
+	for i := 0; i < int(dim_1); i++ {
+		doubleSlice[i] = make([]frontend.Variable, dim_2)
+	}
+	assignment_1 := VectorGadget{
+		In_1:   make([]frontend.Variable, dim_2),
+		In_2:   make([]frontend.Variable, dim_2),
+		Nested: doubleSlice,
+	}
+	assignment_2 := ReturnItself{
+		In_1: make([]frontend.Variable, dim_1),
+		Out: make([]frontend.Variable, dim_1),
+	}
+	assignment_3 := OptimisedVectorGadget{}
+	out, err := ExtractGadgets("MultipleGadgetsVectors", ecc.BN254, &assignment_1, &assignment_2, &assignment_3)
 	if err != nil {
 		log.Fatal(err)
 	}

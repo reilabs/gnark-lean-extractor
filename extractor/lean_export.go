@@ -547,16 +547,22 @@ func genGadgetBody(inAssignment []ExArg, gadget ExGadget) string {
 	for i, app := range gadget.Code {
 		lines[i] = genLine(app, gateVars[i], inAssignment, gateVars)
 	}
-	outs := operandExprs(gadget.Outputs, inAssignment, gateVars)
-	lastLine := "    True"
-	if len(outs) != 0 {
-		result := outs[0]
-		if len(gadget.Outputs) > 1 {
-			result = fmt.Sprintf("vec![%s]", strings.Join(outs, ", "))
-		}
-		lastLine = fmt.Sprintf("    k %s", result)
+
+	switch len(gadget.Outputs) {
+	case 0:
+		lastLine := "    True"
+		return strings.Join(append(lines, lastLine), "")
+	case 1:
+		// The case statement ensures there is index 0 (and only 0)
+		result := operandExpr(gadget.Outputs[0], inAssignment, gateVars)
+		lastLine := fmt.Sprintf("    k %s", result)
+		return strings.Join(append(lines, lastLine), "")
+	default:
+		// Same trick used for OpFromBinary in genOpCall
+		result := operandExpr(ProjArray{gadget.Outputs}, inAssignment, gateVars)
+		lastLine := fmt.Sprintf("    k %s", result)
+		return strings.Join(append(lines, lastLine), "")
 	}
-	return strings.Join(append(lines, lastLine), "")
 }
 
 func genCircuitBody(circuit ExCircuit) string {
