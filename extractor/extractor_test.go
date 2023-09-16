@@ -14,7 +14,7 @@ import (
 
 // Example: Gadget that returns a vector
 type OptimisedVectorGadget struct {
-	In   frontend.Variable
+	In frontend.Variable
 }
 
 func (gadget OptimisedVectorGadget) DefineGadget(api abstractor.API) []frontend.Variable {
@@ -320,7 +320,7 @@ func TestExtractGadgetsVectors(t *testing.T) {
 	}
 	assignment_2 := ReturnItself{
 		In_1: make([]frontend.Variable, dim_1),
-		Out: make([]frontend.Variable, dim_1),
+		Out:  make([]frontend.Variable, dim_1),
 	}
 	assignment_3 := OptimisedVectorGadget{}
 	out, err := ExtractGadgets("MultipleGadgetsVectors", ecc.BN254, &assignment_1, &assignment_2, &assignment_3)
