@@ -180,14 +180,14 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 			arg := flattenSlice(v)
 			if len(arg) != 0 {
 				args = append(args, arg)
-			}			
+			}
 		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
 			// the field is unaddressable.
 			arg := arrayToSlice(v)
 			if len(arg) != 0 {
 				args = append(args, arg)
-			}			
+			}
 		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
