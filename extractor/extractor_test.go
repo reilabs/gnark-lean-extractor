@@ -14,8 +14,8 @@ import (
 
 // Example: Gadget with nested array of int
 type IntArrayGadget struct {
-	In []frontend.Variable
-	Matrix [2]int
+	In           []frontend.Variable
+	Matrix       [2]int
 	NestedMatrix [2][2]int
 }
 
@@ -25,7 +25,7 @@ func (gadget IntArrayGadget) DefineGadget(api abstractor.API) []frontend.Variabl
 }
 
 type AnotherCircuit struct {
-	In []frontend.Variable
+	In     []frontend.Variable
 	Matrix [2][2]int
 }
 
@@ -48,7 +48,7 @@ func TestAnotherCircuit(t *testing.T) {
 		{1, 44},
 	}
 	assignment := AnotherCircuit{
-		In: make([]frontend.Variable, 3),
+		In:     make([]frontend.Variable, 3),
 		Matrix: m,
 	}
 	out, err := CircuitToLean(&assignment, ecc.BN254)

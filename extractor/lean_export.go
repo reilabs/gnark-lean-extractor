@@ -656,7 +656,7 @@ func isVectorComplete(operand ProjArray, inAssignment []ExArg) bool {
 	if len(operand.Proj) == 0 {
 		return false
 	}
-	
+
 	if reflect.TypeOf(operand.Proj[0]) != reflect.TypeOf(Proj{}) {
 		return false
 	}
