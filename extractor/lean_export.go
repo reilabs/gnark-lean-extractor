@@ -27,6 +27,8 @@ func ExportPrelude(name string, order *big.Int) string {
 	s := fmt.Sprintf(`import ProvenZk.Gates
 import ProvenZk.Ext.Vector
 
+set_option linter.unusedVariables false
+
 namespace %s
 
 def Order : ℕ := 0x%s
@@ -479,16 +481,7 @@ func genFunctionalGate(gateVar string, op Op, operands []string) string {
 
 func genCallbackGate(gateVar string, op Op, operands []string, args []Operand) string {
 	gateName := getGateName(gateVar, false)
-	switch op {
-	case OpFromBinary:
-		is_gate := reflect.TypeOf(args[0]) == reflect.TypeOf(Gate{})
-		if len(args) == 1 && is_gate {
-			return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
-		}
-		return fmt.Sprintf("    ∃%s, %s vec![%s] %s ∧\n", gateName, genGateOp(op), strings.Join(operands, ", "), gateName)
-	default:
-		return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
-	}
+	return fmt.Sprintf("    ∃%s, %s %s %s ∧\n", gateName, genGateOp(op), strings.Join(operands, " "), gateName)
 }
 
 func genGenericGate(op Op, operands []string) string {
@@ -507,6 +500,13 @@ func genOpCall(gateVar string, inAssignment []ExArg, gateVars []string, op Op, a
 	}
 
 	operands := operandExprs(args, inAssignment, gateVars)
+	if op == OpFromBinary {
+		// OpFromBinary takes only one argument which is represented as list of Proj. For this reason we can
+		// safely wrap it in a ProjArray and call operandExpr directly.
+		projArray := ProjArray{args}
+		operands = []string{operandExpr(projArray, inAssignment, gateVars)}
+	}
+
 	if functional {
 		// if an operation supports infinite length of arguments,
 		// turn it into a chain of operations
@@ -569,6 +569,94 @@ func genCircuitBody(circuit ExCircuit) string {
 	return strings.Join(append(lines, lastLine), "")
 }
 
+func getArgIndex(operand ProjArray) int {
+	switch op := operand.Proj[0].(Proj).Operand.(type) {
+	case Input:
+		return op.Index
+	case Gate:
+		return op.Index
+	case Proj:
+		return getArgIndex(ProjArray{[]Operand{op}})
+	default:
+		return -1
+	}
+}
+
+func checkVector(operand ProjArray, argIdx int, inAssignment []ExArg) bool {
+	switch operand.Proj[0].(Proj).Operand.(type) {
+	case Input: {
+		arg := inAssignment[argIdx]
+		if arg.Type.Size != len(operand.Proj) {
+			return false
+		}
+
+		var lastIndex = operand.Proj[0].(Proj).Index
+		if lastIndex != 0 {
+			return false
+		}
+		for _, op := range operand.Proj[1:] {
+			// Add recursion for nested arrays!
+			switch t := op.(Proj).Operand.(type) {
+			case Input:
+				if t.Index != argIdx {
+					return false
+				}
+				if lastIndex != op.(Proj).Index - 1 {
+					return false
+				}
+				lastIndex += 1
+			default:
+				return false
+			}
+		}
+		return true
+	}
+	case Gate: {
+		var lastIndex = operand.Proj[0].(Proj).Index
+		if lastIndex != 0 {
+			return false
+		}
+		// Can't do a size check for Gate because it's just a string
+		for _, op := range operand.Proj[1:] {
+			// Add recursion for nested arrays!
+			switch t := op.(Proj).Operand.(type) {
+			case Gate:
+				if t.Index != argIdx {
+					return false
+				}
+				if lastIndex != op.(Proj).Index - 1 {
+					return false
+				}
+				lastIndex += 1
+			default:
+				return false
+			}
+		}
+		return true
+	}
+	case Proj: {
+		// TODO. No panic because it's optimisation
+		return false
+	}
+	default:
+		return false
+	}
+}
+
+func isVectorComplete(operand ProjArray, inAssignment []ExArg) bool {
+	// Add checks for size and casting!
+	if reflect.TypeOf(operand.Proj[0]) != reflect.TypeOf(Proj{}) {
+		return false
+	}
+
+	argIdx := getArgIndex(operand)
+	if argIdx == -1 {
+		return false
+	}
+
+	return checkVector(operand, argIdx, inAssignment)
+}
+
 func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) string {
 	switch operand.(type) {
 	case Input:
@@ -578,6 +666,9 @@ func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) strin
 	case Proj:
 		return fmt.Sprintf("%s[%d]", operandExpr(operand.(Proj).Operand, inAssignment, gateVars), operand.(Proj).Index)
 	case ProjArray:
+		if isVectorComplete(operand.(ProjArray), inAssignment) {
+			return operandExpr(operand.(ProjArray).Proj[0].(Proj).Operand, inAssignment, gateVars)
+		}
 		opArray := operandExprs(operand.(ProjArray).Proj, inAssignment, gateVars)
 		opArray = []string{strings.Join(opArray, ", ")}
 		return fmt.Sprintf("vec!%s", opArray)
@@ -592,9 +683,9 @@ func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) strin
 }
 
 func operandExprs(operands []Operand, inAssignment []ExArg, gateVars []string) []string {
-	exprs := make([]string, len(operands))
-	for i, operand := range operands {
-		exprs[i] = operandExpr(operand, inAssignment, gateVars)
+	exprs := []string{}
+	for _, operand := range operands {
+		exprs = append(exprs, operandExpr(operand, inAssignment, gateVars))
 	}
 	return exprs
 }

@@ -330,6 +330,12 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
 	// Packs in little-endian
+	if len(b) == 0 {
+		panic("FromBinary has to have at least one argument!")
+	}
+	if reflect.TypeOf(b[0]) == reflect.TypeOf([]frontend.Variable{}) {
+		panic("Pass operators to FromBinary using ellipsis")
+	}
 	return ce.AddApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
 }
 

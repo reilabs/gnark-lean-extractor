@@ -151,9 +151,14 @@ func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
 			In_1: circuit.Path,
 			Out:  D,
 		})
+		api.AssertIsEqual(D[1], D[2])
 	}
 
 	api.FromBinary(circuit.Path...)
+	api.FromBinary(D...)
+	api.FromBinary(D[1], D[2], D[0])
+	api.FromBinary(D[1], 0, D[0])
+	api.FromBinary(D[1:3]...)
 	bin := api.ToBinary(circuit.In)
 	bin = api.ToBinary(circuit.Param)
 
