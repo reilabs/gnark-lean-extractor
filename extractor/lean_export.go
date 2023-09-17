@@ -620,27 +620,28 @@ func checkVector(operand ProjArray, argIdx int, inAssignment []ExArg) bool {
 		}
 	case Gate:
 		{
-			var lastIndex = operand.Proj[0].(Proj).Index
-			if lastIndex != 0 {
-				return false
-			}
-			// Can't do a size check for Gate because it's just a string
-			for _, op := range operand.Proj[1:] {
-				// Add recursion for nested arrays!
-				switch t := op.(Proj).Operand.(type) {
-				case Gate:
-					if t.Index != argIdx {
-						return false
-					}
-					if lastIndex != op.(Proj).Index-1 {
-						return false
-					}
-					lastIndex += 1
-				default:
-					return false
-				}
-			}
-			return true
+			return false
+			// var lastIndex = operand.Proj[0].(Proj).Index
+			// if lastIndex != 0 {
+			// 	return false
+			// }
+			// // Can't do a size check for Gate because it's just a string
+			// for _, op := range operand.Proj[1:] {
+			// 	// Add recursion for nested arrays!
+			// 	switch t := op.(Proj).Operand.(type) {
+			// 	case Gate:
+			// 		if t.Index != argIdx {
+			// 			return false
+			// 		}
+			// 		if lastIndex != op.(Proj).Index-1 {
+			// 			return false
+			// 		}
+			// 		lastIndex += 1
+			// 	default:
+			// 		return false
+			// 	}
+			// }
+			// return true
 		}
 	case Proj:
 		{

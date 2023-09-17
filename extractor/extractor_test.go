@@ -56,7 +56,7 @@ type IntArrayGadget struct {
 func (gadget IntArrayGadget) DefineGadget(api abstractor.API) []frontend.Variable {
 	r := api.FromBinary(gadget.In...)
 	api.Mul(gadget.Matrix[0], gadget.Matrix[1])
-	return []frontend.Variable{r}
+	return []frontend.Variable{r, r, r}
 }
 
 type AnotherCircuit struct {
@@ -65,11 +65,13 @@ type AnotherCircuit struct {
 }
 
 func (circuit *AnotherCircuit) AbsDefine(api abstractor.API) error {
-	api.Call(IntArrayGadget{
+	r := api.Call(IntArrayGadget{
 		circuit.In,
 		circuit.Matrix[0],
 		circuit.Matrix,
 	})
+	api.FromBinary(r[1:3]...)
+	api.FromBinary(r[0:2]...)
 	return nil
 }
 

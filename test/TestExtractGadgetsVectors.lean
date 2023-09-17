@@ -23,6 +23,6 @@ def ReturnItself_3_3 (In_1: Vector F 3) (Out: Vector F 3) (k: Vector F 3 -> Prop
 
 def OptimisedVectorGadget (In: F) (k: Vector F 3 -> Prop): Prop :=
     ∃gate_0, Gates.to_binary In 3 gate_0 ∧
-    k gate_0
+    k vec![gate_0[0], gate_0[1], gate_0[2]]
 
 end MultipleGadgetsVectors
