@@ -70,8 +70,10 @@ func (circuit *AnotherCircuit) AbsDefine(api abstractor.API) error {
 		circuit.Matrix[0],
 		circuit.Matrix,
 	})
+
 	api.FromBinary(r[1:3]...)
 	api.FromBinary(r[0:2]...)
+	api.FromBinary(r...)
 	return nil
 }
 
@@ -85,7 +87,7 @@ func TestAnotherCircuit(t *testing.T) {
 		{1, 44},
 	}
 	assignment := AnotherCircuit{
-		In:     make([]frontend.Variable, 3),
+		In:     make([]frontend.Variable, 4),
 		Matrix: m,
 	}
 	out, err := CircuitToLean(&assignment, ecc.BN254)

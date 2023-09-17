@@ -50,9 +50,14 @@ func (_ Input) isOperand() {}
 
 // Index is the index to be accessed in the array
 // Operand[Index]
+// Size is a placeholder to keep track of the whole
+// array size. It is essential to know if the whole
+// vector or only a slice is used as function
+// argument.
 type Proj struct {
 	Operand Operand
 	Index   int
+	Size    int
 }
 
 func (_ Proj) isOperand() {}
@@ -199,7 +204,7 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 		outs[0] = gate
 	} else {
 		for i := range g.Outputs {
-			outs[i] = Proj{gate, i}
+			outs[i] = Proj{gate, i, len(g.Outputs)}
 		}
 	}
 	return outs
@@ -339,7 +344,7 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 	gate := ce.AddApp(OpToBinary, i1, Integer{big.NewInt(int64(nbBits))})
 	outs := make([]frontend.Variable, nbBits)
 	for i := range outs {
-		outs[i] = Proj{gate, i}
+		outs[i] = Proj{gate, i, len(outs)}
 	}
 	return outs
 }

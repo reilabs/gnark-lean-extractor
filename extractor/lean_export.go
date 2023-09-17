@@ -77,7 +77,7 @@ func ExportCircuit(circuit ExCircuit, name string) string {
 
 func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
 	for i := 0; i < f.ArraySize; i++ {
-		op := Proj{op, i}
+		op := Proj{op, i, f.ArraySize}
 		switch len(f.SubFields) {
 		case 1:
 			ArrayInit(f.SubFields[0], v.Index(i), op)
@@ -620,28 +620,30 @@ func checkVector(operand ProjArray, argIdx int, inAssignment []ExArg) bool {
 		}
 	case Gate:
 		{
-			return false
-			// var lastIndex = operand.Proj[0].(Proj).Index
-			// if lastIndex != 0 {
-			// 	return false
-			// }
-			// // Can't do a size check for Gate because it's just a string
-			// for _, op := range operand.Proj[1:] {
-			// 	// Add recursion for nested arrays!
-			// 	switch t := op.(Proj).Operand.(type) {
-			// 	case Gate:
-			// 		if t.Index != argIdx {
-			// 			return false
-			// 		}
-			// 		if lastIndex != op.(Proj).Index-1 {
-			// 			return false
-			// 		}
-			// 		lastIndex += 1
-			// 	default:
-			// 		return false
-			// 	}
-			// }
-			// return true
+			if operand.Proj[0].(Proj).Size != len(operand.Proj) {
+				return false
+			}
+
+			var lastIndex = operand.Proj[0].(Proj).Index
+			if lastIndex != 0 {
+				return false
+			}
+			for _, op := range operand.Proj[1:] {
+				// Add recursion for nested arrays!
+				switch t := op.(Proj).Operand.(type) {
+				case Gate:
+					if t.Index != argIdx {
+						return false
+					}
+					if lastIndex != op.(Proj).Index-1 {
+						return false
+					}
+					lastIndex += 1
+				default:
+					return false
+				}
+			}
+			return true
 		}
 	case Proj:
 		{
