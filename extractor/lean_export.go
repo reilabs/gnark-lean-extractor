@@ -684,6 +684,9 @@ func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) strin
 		if isVectorComplete(operand.(ProjArray), inAssignment) {
 			return operandExpr(operand.(ProjArray).Proj[0].(Proj).Operand, inAssignment, gateVars)
 		}
+		// fmt.Println("--------------------------------")
+		// fmt.Printf("operand.(ProjArray).Proj %+v\ninAssignment %+v\n", operand.(ProjArray).Proj, inAssignment)
+		// fmt.Println("--------------------------------")
 		opArray := operandExprs(operand.(ProjArray).Proj, inAssignment, gateVars)
 		opArray = []string{strings.Join(opArray, ", ")}
 		return fmt.Sprintf("vec!%s", opArray)

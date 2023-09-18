@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/mitchellh/copystructure"
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
 
 	"github.com/consensys/gnark-crypto/ecc"
@@ -211,7 +212,12 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 }
 
 func cloneGadget(gadget abstractor.GadgetDefinition) abstractor.GadgetDefinition {
-	v := reflect.ValueOf(gadget)
+	dup, err := copystructure.Copy(gadget)
+	if err != nil {
+		panic(err)
+	}
+	// The reason for the following lines is to generate a reflect.Ptr to the interface
+	v := reflect.ValueOf(dup)
 	tmp_gadget := reflect.New(v.Type())
 	tmp_gadget.Elem().Set(v)
 	return tmp_gadget.Interface().(abstractor.GadgetDefinition)
