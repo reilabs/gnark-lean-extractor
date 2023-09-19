@@ -629,11 +629,11 @@ func checkVector(operand ProjArray, argIdx int) (bool, Operand) {
 }
 
 func getSize(operand ProjArray) (int, Operand) {
-	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}){
+	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}) {
 		return getSize(operand.Projs[0].(ProjArray))
 	} else if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(Proj{}) {
 		proj := operand.Projs[0].(Proj)
-		if reflect.TypeOf(proj.Operand) == reflect.TypeOf(Proj{}){
+		if reflect.TypeOf(proj.Operand) == reflect.TypeOf(Proj{}) {
 			return getSize(ProjArray{[]Operand{proj.Operand}})
 		} else {
 			return proj.Size, proj
@@ -649,7 +649,7 @@ func isVectorComplete(operand ProjArray) (bool, Operand) {
 		return false, operand
 	}
 
-	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}){
+	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}) {
 		// Check correct length
 		size, newOperand := getSize(operand)
 		if size != len(operand.Projs) {
@@ -670,7 +670,7 @@ func isVectorComplete(operand ProjArray) (bool, Operand) {
 
 		// Check indices are in ascending order
 		// on the same argIdx
-		for _,p := range operand.Projs[1:] {
+		for _, p := range operand.Projs[1:] {
 			isComplete, newO := isVectorComplete(p.(ProjArray))
 			if !isComplete {
 				return false, operand

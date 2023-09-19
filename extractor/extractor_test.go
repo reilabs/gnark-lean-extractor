@@ -66,7 +66,7 @@ func checkOutput(t *testing.T, testOutput string) {
 
 // Example: checking slices optimisation
 type SlicesGadget struct {
-	Proofs    [][]frontend.Variable
+	Proofs [][]frontend.Variable
 }
 
 func (gadget SlicesGadget) DefineGadget(api abstractor.API) []frontend.Variable {
@@ -80,16 +80,16 @@ type SlicesOptimisation struct {
 
 func (circuit *SlicesOptimisation) AbsDefine(api abstractor.API) error {
 	api.Call(SlicesGadget{
-		Proofs:         circuit.MerkleProofs,
+		Proofs: circuit.MerkleProofs,
 	})
 	api.Call(SlicesGadget{
-		Proofs:         [][]frontend.Variable{circuit.MerkleProofs[1], circuit.MerkleProofs[0]},
+		Proofs: [][]frontend.Variable{circuit.MerkleProofs[1], circuit.MerkleProofs[0]},
 	})
 	api.Call(SlicesGadget{
-		Proofs:         [][]frontend.Variable{{circuit.MerkleProofs[1][1]}, {circuit.MerkleProofs[1][0]}},
+		Proofs: [][]frontend.Variable{{circuit.MerkleProofs[1][1]}, {circuit.MerkleProofs[1][0]}},
 	})
 	api.Call(SlicesGadget{
-		Proofs:         [][]frontend.Variable{circuit.MerkleProofs[1], {circuit.MerkleProofs[1][0], circuit.MerkleProofs[0][0], circuit.MerkleProofs[1][1]}},
+		Proofs: [][]frontend.Variable{circuit.MerkleProofs[1], {circuit.MerkleProofs[1][0], circuit.MerkleProofs[0][0], circuit.MerkleProofs[1][1]}},
 	})
 
 	return nil
@@ -108,8 +108,8 @@ func TestSlicesOptimisation(t *testing.T) {
 	}
 
 	assignment := SlicesOptimisation{
-		IdComms: make([]frontend.Variable, treeDepth),
-		MerkleProofs:    proofs,
+		IdComms:      make([]frontend.Variable, treeDepth),
+		MerkleProofs: proofs,
 	}
 	out, err := CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
