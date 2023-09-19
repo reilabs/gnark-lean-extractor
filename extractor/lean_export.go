@@ -82,6 +82,12 @@ func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
 		case 1:
 			ArrayInit(f.SubFields[0], v.Index(i), op)
 		case 0:
+			if v.Len() != f.ArraySize {
+				// Slices of this type aren't supported yet [[<nil> <nil> <nil>] [<nil> <nil>]]
+				// gnark newSchema doesn't handle different dimensions
+				fmt.Printf("Wrong slices dimensions %+v\n", v)
+				panic("Only slices dimensions not matching")
+			}
 			value := reflect.ValueOf(op)
 			v.Index(i).Set(value)
 		default:

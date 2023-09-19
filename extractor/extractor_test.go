@@ -42,7 +42,7 @@ func checkOutput(t *testing.T, testOutput string) {
 
 	f, err := os.Open(filename)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error checking test output\n\n%s\n\n%s\n\n", err, testOutput)
 	}
 	defer f.Close()
 
@@ -62,6 +62,60 @@ func checkOutput(t *testing.T, testOutput string) {
 		t.Logf("This circuit doesn't match the result in the test folder\n\n%s", testOutput)
 		t.Fail()
 	}
+}
+
+// Example: checking slices optimisation
+type SlicesGadget struct {
+	Proofs    [][]frontend.Variable
+}
+
+func (gadget SlicesGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+	return gadget.Proofs[0]
+}
+
+type SlicesOptimisation struct {
+	IdComms      []frontend.Variable
+	MerkleProofs [][]frontend.Variable
+}
+
+func (circuit *SlicesOptimisation) AbsDefine(api abstractor.API) error {
+	api.Call(SlicesGadget{
+		Proofs:         circuit.MerkleProofs,
+	})
+	api.Call(SlicesGadget{
+		Proofs:         [][]frontend.Variable{circuit.MerkleProofs[1], circuit.MerkleProofs[0]},
+	})
+	api.Call(SlicesGadget{
+		Proofs:         [][]frontend.Variable{{circuit.MerkleProofs[1][1]}, {circuit.MerkleProofs[1][0]}},
+	})
+	api.Call(SlicesGadget{
+		Proofs:         [][]frontend.Variable{circuit.MerkleProofs[1], {circuit.MerkleProofs[1][0], circuit.MerkleProofs[0][0], circuit.MerkleProofs[1][1]}},
+	})
+
+	return nil
+}
+
+func (circuit SlicesOptimisation) Define(api frontend.API) error {
+	return abstractor.Concretize(api, &circuit)
+}
+
+func TestSlicesOptimisation(t *testing.T) {
+	batchSize := 2
+	treeDepth := 3
+	proofs := make([][]frontend.Variable, batchSize)
+	for i := 0; i < int(batchSize); i++ {
+		proofs[i] = make([]frontend.Variable, treeDepth)
+	}
+
+	assignment := SlicesOptimisation{
+		IdComms: make([]frontend.Variable, treeDepth),
+		MerkleProofs:    proofs,
+	}
+	out, err := CircuitToLean(&assignment, ecc.BN254)
+	if err != nil {
+		log.Fatal(err)
+	}
+	checkOutput(t, out)
 }
 
 // Example: Mismatched arguments error
@@ -97,7 +151,6 @@ type DeletionMbuCircuit struct {
 }
 
 func (circuit *DeletionMbuCircuit) AbsDefine(api abstractor.API) error {
-	//fmt.Printf("circuit.MerkleProofs %+v\n", circuit.MerkleProofs)
 	root := api.Call(DeletionProof{
 		DeletionIndices: circuit.DeletionIndices,
 		PreRoot:         circuit.PreRoot,
