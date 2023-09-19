@@ -13,7 +13,7 @@ def DeletionProof_2_2_3_2_2_3 (DeletionIndices: Vector F 2) (PreRoot: F) (IdComm
     k PreRoot
 
 def circuit (InputHash: F) (DeletionIndices: Vector F 2) (PreRoot: F) (PostRoot: F) (IdComms: Vector F 2) (MerkleProofs: Vector (Vector F 3) 2): Prop :=
-    DeletionProof_2_2_3_2_2_3 DeletionIndices PreRoot IdComms vec![vec![MerkleProofs[0][0], MerkleProofs[0][1], MerkleProofs[0][2]], vec![MerkleProofs[1][0], MerkleProofs[1][1], MerkleProofs[1][2]]] fun gate_0 =>
+    DeletionProof_2_2_3_2_2_3 DeletionIndices PreRoot IdComms MerkleProofs fun gate_0 =>
     Gates.eq gate_0 PostRoot ∧
     True
 

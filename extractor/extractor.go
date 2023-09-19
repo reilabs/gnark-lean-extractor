@@ -64,7 +64,7 @@ type Proj struct {
 func (_ Proj) isOperand() {}
 
 type ProjArray struct {
-	Proj []Operand
+	Projs []Operand
 }
 
 func (_ ProjArray) isOperand() {}
@@ -493,7 +493,7 @@ func generateUniqueName(element any, args []ExArg) string {
 	for _, a := range args {
 		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
 			suffix += "_"
-			suffix += strings.Join(getSize(a.Type), "_")
+			suffix += strings.Join(getSizeGadgetArgs(a.Type), "_")
 		}
 	}
 
@@ -521,14 +521,14 @@ func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	return nil
 }
 
-// getSize generates the concatenation of dimensions of
+// getSizeGadgetArgs generates the concatenation of dimensions of
 // a slice/array (i.e. [3][2]frontend.Variable --> ["3","2"])
 // It is used to generate a unique gadget name
-func getSize(elem ExArgType) []string {
+func getSizeGadgetArgs(elem ExArgType) []string {
 	if elem.Type == nil {
 		return []string{fmt.Sprintf("%d", elem.Size)}
 	}
-	return append(getSize(*elem.Type), fmt.Sprintf("%d", elem.Size))
+	return append(getSizeGadgetArgs(*elem.Type), fmt.Sprintf("%d", elem.Size))
 }
 
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {

@@ -21,7 +21,7 @@ def circuit (In: F) (Out: F) (Double: Vector (Vector F 3) 3): Prop :=
     ∃_ignored_, _ignored_ = Gates.add Double[2][2] Double[1][1] ∧
     ∃_ignored_, _ignored_ = Gates.add _ignored_ Double[0][0] ∧
     ∃_ignored_, _ignored_ = Gates.mul gate_0[1] gate_1[1] ∧
-    VectorGadget_3_3_3_3 vec![Double[2][0], Double[2][1], Double[2][2]] vec![Double[0][0], Double[0][1], Double[0][2]] vec![vec![Double[0][0], Double[0][1], Double[0][2]], vec![Double[1][0], Double[1][1], Double[1][2]], vec![Double[2][0], Double[2][1], Double[2][2]]] fun gate_4 =>
+    VectorGadget_3_3_3_3 Double[2] Double[0] Double fun gate_4 =>
     ∃_ignored_, _ignored_ = Gates.mul gate_4[2] gate_4[1] ∧
     True
 

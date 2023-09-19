@@ -355,8 +355,8 @@ func extractGateVars(arg Operand) []Operand {
 		return extractGateVars(arg.(Proj).Operand)
 	case ProjArray:
 		res := []Operand{}
-		for i := range arg.(ProjArray).Proj {
-			res = append(res, extractGateVars(arg.(ProjArray).Proj[i])...)
+		for i := range arg.(ProjArray).Projs {
+			res = append(res, extractGateVars(arg.(ProjArray).Projs[i])...)
 		}
 		return res
 	default:
@@ -576,100 +576,117 @@ func genCircuitBody(circuit ExCircuit) string {
 }
 
 func getArgIndex(operand ProjArray) int {
-	switch op := operand.Proj[0].(Proj).Operand.(type) {
-	case Input:
-		return op.Index
-	case Gate:
-		return op.Index
-	case Proj:
-		return getArgIndex(ProjArray{[]Operand{op}})
-	default:
+	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(Proj{}) {
+		switch op := operand.Projs[0].(Proj).Operand.(type) {
+		case Input:
+			return op.Index
+		case Gate:
+			return op.Index
+		case Proj:
+			return getArgIndex(ProjArray{[]Operand{op}})
+		default:
+			return -1
+		}
+	} else if (reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{})) {
+		return getArgIndex(operand.Projs[0].(ProjArray))
+	} else {
 		return -1
 	}
 }
 
-func checkVector(operand ProjArray, argIdx int, inAssignment []ExArg) bool {
-	switch operand.Proj[0].(Proj).Operand.(type) {
-	case Input:
-		{
-			arg := inAssignment[argIdx]
-			if arg.Type.Size != len(operand.Proj) {
-				return false
-			}
+func checkVector(operand ProjArray, argIdx int) (bool, Operand) {
+	// Check correct length
+	if operand.Projs[0].(Proj).Size != len(operand.Projs) {
+		return false, operand
+	}
 
-			var lastIndex = operand.Proj[0].(Proj).Index
-			if lastIndex != 0 {
-				return false
-			}
-			for _, op := range operand.Proj[1:] {
-				// Add recursion for nested arrays!
-				switch t := op.(Proj).Operand.(type) {
-				case Input:
-					if t.Index != argIdx {
-						return false
-					}
-					if lastIndex != op.(Proj).Index-1 {
-						return false
-					}
-					lastIndex += 1
-				default:
-					return false
-				}
-			}
-			return true
-		}
-	case Gate:
-		{
-			if operand.Proj[0].(Proj).Size != len(operand.Proj) {
-				return false
-			}
+	// Check index starts at 0
+	lastIndex := operand.Projs[0].(Proj).Index
+	if lastIndex != 0 {
+		return false, operand
+	}
+	// Check always same Operand
+	firstOperand := operand.Projs[0].(Proj).Operand
 
-			var lastIndex = operand.Proj[0].(Proj).Index
-			if lastIndex != 0 {
-				return false
-			}
-			for _, op := range operand.Proj[1:] {
-				// Add recursion for nested arrays!
-				switch t := op.(Proj).Operand.(type) {
-				case Gate:
-					if t.Index != argIdx {
-						return false
-					}
-					if lastIndex != op.(Proj).Index-1 {
-						return false
-					}
-					lastIndex += 1
-				default:
-					return false
-				}
-			}
-			return true
+	// Check indices are in ascending order
+	// on the same argIdx
+	for _, op := range operand.Projs[1:] {
+		if lastIndex != op.(Proj).Index-1 {
+			return false, operand
 		}
-	case Proj:
-		{
-			// TODO. No panic because it's optimisation
-			return false
+		lastIndex += 1
+		if firstOperand != op.(Proj).Operand {
+			return false, operand
 		}
-	default:
-		return false
+	}
+	return true, operand.Projs[0].(Proj).Operand
+}
+
+func getSize(operand ProjArray) (int, Operand) {
+	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}){
+		return getSize(operand.Projs[0].(ProjArray))
+	} else if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(Proj{}) {
+		proj := operand.Projs[0].(Proj)
+		if reflect.TypeOf(proj.Operand) == reflect.TypeOf(Proj{}){
+			return getSize(ProjArray{[]Operand{proj.Operand}})
+		} else {
+			return proj.Size, proj
+		}
+	} else {
+		fmt.Printf("Shall not reach!")
+		return -1, operand
 	}
 }
 
-func isVectorComplete(operand ProjArray, inAssignment []ExArg) bool {
-	if len(operand.Proj) == 0 {
-		return false
+func isVectorComplete(operand ProjArray) (bool, Operand) {
+	if len(operand.Projs) == 0 {
+		return false, operand
 	}
 
-	if reflect.TypeOf(operand.Proj[0]) != reflect.TypeOf(Proj{}) {
-		return false
+	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}){
+		// Check correct length
+		size, newOperand := getSize(operand)
+		if size != len(operand.Projs) {
+			return false, operand
+		}
+
+		// Check index starts at 0
+		lastIndex := newOperand.(Proj).Index
+		if lastIndex != 0 {
+			return false, operand
+		}
+		firstOperand := newOperand.(Proj).Operand
+
+		isComplete, _ := isVectorComplete(operand.Projs[0].(ProjArray))
+		if !isComplete {
+			return false, operand
+		}
+
+		// Check indices are in ascending order
+		// on the same argIdx
+		for _,p := range operand.Projs[1:] {
+			isComplete, newO := isVectorComplete(p.(ProjArray))
+			if !isComplete {
+				return false, operand
+			}
+			if lastIndex != newO.(Proj).Index-1 {
+				return false, operand
+			}
+			lastIndex += 1
+
+			if firstOperand != newO.(Proj).Operand {
+				return false, operand
+			}
+		}
+		return true, newOperand.(Proj).Operand
 	}
 
 	argIdx := getArgIndex(operand)
 	if argIdx == -1 {
-		return false
+		return false, operand
 	}
 
-	return checkVector(operand, argIdx, inAssignment)
+	return checkVector(operand, argIdx)
 }
 
 func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) string {
@@ -681,13 +698,11 @@ func operandExpr(operand Operand, inAssignment []ExArg, gateVars []string) strin
 	case Proj:
 		return fmt.Sprintf("%s[%d]", operandExpr(operand.(Proj).Operand, inAssignment, gateVars), operand.(Proj).Index)
 	case ProjArray:
-		if isVectorComplete(operand.(ProjArray), inAssignment) {
-			return operandExpr(operand.(ProjArray).Proj[0].(Proj).Operand, inAssignment, gateVars)
+		isComplete, newOperand := isVectorComplete(operand.(ProjArray))
+		if isComplete {
+			return operandExpr(newOperand, inAssignment, gateVars)
 		}
-		// fmt.Println("--------------------------------")
-		// fmt.Printf("operand.(ProjArray).Proj %+v\ninAssignment %+v\n", operand.(ProjArray).Proj, inAssignment)
-		// fmt.Println("--------------------------------")
-		opArray := operandExprs(operand.(ProjArray).Proj, inAssignment, gateVars)
+		opArray := operandExprs(operand.(ProjArray).Projs, inAssignment, gateVars)
 		opArray = []string{strings.Join(opArray, ", ")}
 		return fmt.Sprintf("vec!%s", opArray)
 	case Const:
