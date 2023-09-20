@@ -658,7 +658,7 @@ func checkDimensions(operand ProjArray, length []int, argIndex Operand, pastIndi
 	if len(operand.Projs) != length[0] {
 		return false
 	}
-	for i,p := range operand.Projs {
+	for i, p := range operand.Projs {
 		if len(length[1:]) >= 1 {
 			past := append(pastIndices, i)
 			if !checkDimensions(p.(ProjArray), length[1:], argIndex, past...) {

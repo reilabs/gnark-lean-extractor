@@ -40,7 +40,7 @@ func checkOutput(t *testing.T, testOutput string) {
 
 	// https://stackoverflow.com/a/66405130
 	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
-	    saveOutput(filename, testOutput)
+		saveOutput(filename, testOutput)
 	}
 
 	f, err := os.Open(filename)
@@ -86,19 +86,19 @@ type SlicesOptimisation struct {
 
 func (circuit *SlicesOptimisation) AbsDefine(api abstractor.API) error {
 	api.Call(SlicesGadget{
-		TwoDim: circuit.TwoDim,
+		TwoDim:   circuit.TwoDim,
 		ThreeDim: circuit.ThreeDim,
 	})
 	api.Call(SlicesGadget{
-		TwoDim: [][]frontend.Variable{circuit.TwoDim[1], circuit.TwoDim[0]},
+		TwoDim:   [][]frontend.Variable{circuit.TwoDim[1], circuit.TwoDim[0]},
 		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0]},
 	})
 	api.Call(SlicesGadget{
-		TwoDim: [][]frontend.Variable{{circuit.TwoDim[1][1]}, {circuit.TwoDim[1][0]}},
+		TwoDim:   [][]frontend.Variable{{circuit.TwoDim[1][1]}, {circuit.TwoDim[1][0]}},
 		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0], circuit.ThreeDim[1]},
 	})
 	api.Call(SlicesGadget{
-		TwoDim: [][]frontend.Variable{circuit.TwoDim[1], {circuit.TwoDim[1][0], circuit.TwoDim[0][0], circuit.TwoDim[1][1]}},
+		TwoDim:   [][]frontend.Variable{circuit.TwoDim[1], {circuit.TwoDim[1][0], circuit.TwoDim[0][0], circuit.TwoDim[1][1]}},
 		ThreeDim: circuit.ThreeDim,
 	})
 
