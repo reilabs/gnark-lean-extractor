@@ -3,6 +3,7 @@ package extractor
 import (
 	"bytes"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -18,10 +19,7 @@ import (
 
 // saveOutput can be called once when creating/changing a test to generate
 // the reference result
-func saveOutput(t *testing.T, testOutput string) {
-	// I assume tests are executed from the extractor directory
-	filename := fmt.Sprintf("../test/%s.lean", t.Name())
-
+func saveOutput(filename string, testOutput string) {
 	f, err := os.Create(filename)
 	if err != nil {
 		log.Fatal(err)
@@ -39,6 +37,11 @@ func saveOutput(t *testing.T, testOutput string) {
 func checkOutput(t *testing.T, testOutput string) {
 	// I assume tests are executed from the extractor directory
 	filename := fmt.Sprintf("../test/%s.lean", t.Name())
+
+	// https://stackoverflow.com/a/66405130
+	if _, err := os.Stat(filename); errors.Is(err, os.ErrNotExist) {
+	    saveOutput(filename, testOutput)
+	}
 
 	f, err := os.Open(filename)
 	if err != nil {
@@ -66,30 +69,37 @@ func checkOutput(t *testing.T, testOutput string) {
 
 // Example: checking slices optimisation
 type SlicesGadget struct {
-	Proofs [][]frontend.Variable
+	TwoDim   [][]frontend.Variable
+	ThreeDim [][][]frontend.Variable
 }
 
 func (gadget SlicesGadget) DefineGadget(api abstractor.API) []frontend.Variable {
-	return gadget.Proofs[0]
+	return append(gadget.ThreeDim[0][0], gadget.TwoDim[0]...)
 }
 
 type SlicesOptimisation struct {
-	IdComms      []frontend.Variable
-	MerkleProofs [][]frontend.Variable
+	Test     frontend.Variable
+	Id       []frontend.Variable
+	TwoDim   [][]frontend.Variable
+	ThreeDim [][][]frontend.Variable
 }
 
 func (circuit *SlicesOptimisation) AbsDefine(api abstractor.API) error {
 	api.Call(SlicesGadget{
-		Proofs: circuit.MerkleProofs,
+		TwoDim: circuit.TwoDim,
+		ThreeDim: circuit.ThreeDim,
 	})
 	api.Call(SlicesGadget{
-		Proofs: [][]frontend.Variable{circuit.MerkleProofs[1], circuit.MerkleProofs[0]},
+		TwoDim: [][]frontend.Variable{circuit.TwoDim[1], circuit.TwoDim[0]},
+		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0]},
 	})
 	api.Call(SlicesGadget{
-		Proofs: [][]frontend.Variable{{circuit.MerkleProofs[1][1]}, {circuit.MerkleProofs[1][0]}},
+		TwoDim: [][]frontend.Variable{{circuit.TwoDim[1][1]}, {circuit.TwoDim[1][0]}},
+		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0], circuit.ThreeDim[1]},
 	})
 	api.Call(SlicesGadget{
-		Proofs: [][]frontend.Variable{circuit.MerkleProofs[1], {circuit.MerkleProofs[1][0], circuit.MerkleProofs[0][0], circuit.MerkleProofs[1][1]}},
+		TwoDim: [][]frontend.Variable{circuit.TwoDim[1], {circuit.TwoDim[1][0], circuit.TwoDim[0][0], circuit.TwoDim[1][1]}},
+		ThreeDim: circuit.ThreeDim,
 	})
 
 	return nil
@@ -100,16 +110,26 @@ func (circuit SlicesOptimisation) Define(api frontend.API) error {
 }
 
 func TestSlicesOptimisation(t *testing.T) {
-	batchSize := 2
-	treeDepth := 3
-	proofs := make([][]frontend.Variable, batchSize)
-	for i := 0; i < int(batchSize); i++ {
-		proofs[i] = make([]frontend.Variable, treeDepth)
+	depthOne := 2
+	depthTwo := 3
+	depthThree := 4
+	twoSlice := make([][]frontend.Variable, depthOne)
+	for i := 0; i < int(depthOne); i++ {
+		twoSlice[i] = make([]frontend.Variable, depthTwo)
+	}
+
+	threeSlice := make([][][]frontend.Variable, depthOne)
+	for x := 0; x < int(depthOne); x++ {
+		threeSlice[x] = make([][]frontend.Variable, depthTwo)
+		for y := 0; y < int(depthTwo); y++ {
+			threeSlice[x][y] = make([]frontend.Variable, depthThree)
+		}
 	}
 
 	assignment := SlicesOptimisation{
-		IdComms:      make([]frontend.Variable, treeDepth),
-		MerkleProofs: proofs,
+		Id:       make([]frontend.Variable, depthTwo),
+		TwoDim:   twoSlice,
+		ThreeDim: threeSlice,
 	}
 	out, err := CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {

@@ -628,20 +628,67 @@ func checkVector(operand ProjArray, argIdx int) (bool, Operand) {
 	return true, operand.Projs[0].(Proj).Operand
 }
 
-func getSize(operand ProjArray) (int, Operand) {
+func getStack(operand ProjArray) []int {
 	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}) {
-		return getSize(operand.Projs[0].(ProjArray))
+		return getStack(operand.Projs[0].(ProjArray))
 	} else if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(Proj{}) {
 		proj := operand.Projs[0].(Proj)
 		if reflect.TypeOf(proj.Operand) == reflect.TypeOf(Proj{}) {
-			return getSize(ProjArray{[]Operand{proj.Operand}})
+			return append(getStack(ProjArray{[]Operand{proj.Operand}}), proj.Size)
 		} else {
-			return proj.Size, proj
+			return []int{proj.Size}
 		}
 	} else {
-		fmt.Printf("Shall not reach!")
-		return -1, operand
+		return []int{}
 	}
+}
+
+func expectedOperand(op Proj, argIndex Operand, indices []int) bool {
+	// fmt.Printf("p %+v %+v %+v\n", argIndex, indices, op)
+	if op.Index != indices[len(indices)-1] {
+		return false
+	}
+	if reflect.TypeOf(op.Operand) == reflect.TypeOf(Proj{}) {
+		return expectedOperand(op.Operand.(Proj), argIndex, indices[0:len(indices)-1])
+	}
+	return op.Operand == argIndex
+}
+
+func checkDimensions(operand ProjArray, length []int, argIndex Operand, pastIndices ...int) bool {
+	if len(operand.Projs) != length[0] {
+		return false
+	}
+	for i,p := range operand.Projs {
+		if len(length[1:]) >= 1 {
+			past := append(pastIndices, i)
+			if !checkDimensions(p.(ProjArray), length[1:], argIndex, past...) {
+				return false
+			}
+		} else {
+			if !expectedOperand(p.(Proj), argIndex, append(pastIndices, i)) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func getFirstOperand(operand ProjArray) Operand {
+	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}) {
+		return getFirstOperand(operand.Projs[0].(ProjArray))
+	} else if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(Proj{}) {
+		return operand.Projs[0].(Proj)
+	} else {
+		fmt.Printf("getFirstOperand %+v\n", operand)
+		panic("Error in getFirstOperand.")
+	}
+}
+
+func getIndex(operand Operand) Operand {
+	if reflect.TypeOf(operand) != reflect.TypeOf(Proj{}) {
+		return operand
+	}
+	return getIndex(operand.(Proj).Operand)
 }
 
 func isVectorComplete(operand ProjArray) (bool, Operand) {
@@ -650,41 +697,19 @@ func isVectorComplete(operand ProjArray) (bool, Operand) {
 	}
 
 	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}) {
-		// Check correct length
-		size, newOperand := getSize(operand)
-		if size != len(operand.Projs) {
+		//fmt.Printf("operand %d %+v\n", len(operand.Projs), operand)
+		sliceDimensions := getStack(operand) // Outermost dimension is at index 0
+		if len(sliceDimensions) == 0 {
 			return false, operand
 		}
-
-		// Check index starts at 0
-		lastIndex := newOperand.(Proj).Index
-		if lastIndex != 0 {
+		// fmt.Printf("Stack %+v\n", sliceDimensions)
+		firstOperand := getFirstOperand(operand)
+		argIdx := getIndex(firstOperand)
+		// fmt.Printf("Index %+v\n", argIdx)
+		if !checkDimensions(operand, sliceDimensions, argIdx) {
 			return false, operand
 		}
-		firstOperand := newOperand.(Proj).Operand
-
-		isComplete, _ := isVectorComplete(operand.Projs[0].(ProjArray))
-		if !isComplete {
-			return false, operand
-		}
-
-		// Check indices are in ascending order
-		// on the same argIdx
-		for _, p := range operand.Projs[1:] {
-			isComplete, newO := isVectorComplete(p.(ProjArray))
-			if !isComplete {
-				return false, operand
-			}
-			if lastIndex != newO.(Proj).Index-1 {
-				return false, operand
-			}
-			lastIndex += 1
-
-			if firstOperand != newO.(Proj).Operand {
-				return false, operand
-			}
-		}
-		return true, newOperand.(Proj).Operand
+		return true, argIdx
 	}
 
 	argIdx := getArgIndex(operand)
