@@ -10,7 +10,7 @@ type ConcreteGadget struct {
 	api API
 }
 
-func (g *ConcreteGadget) Call(gadget GadgetDefinition) []frontend.Variable {
+func (g *ConcreteGadget) Call(gadget GadgetDefinition) interface{} {
 	return gadget.DefineGadget(g.api)
 }
 
@@ -122,7 +122,7 @@ func (c *Concretizer) DefineGadget(gadget GadgetDefinition) Gadget {
 	return &ConcreteGadget{c}
 }
 
-func (c *Concretizer) Call(gadget GadgetDefinition) []frontend.Variable {
+func (c *Concretizer) Call(gadget GadgetDefinition) interface{} {
 	return c.DefineGadget(gadget).Call(gadget)
 }
 

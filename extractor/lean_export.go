@@ -47,12 +47,24 @@ func ExportFooter(name string) string {
 	return s
 }
 
+func generateCallbackType(output reflect.Value) string {
+	if output.Kind() != reflect.Slice {
+		return ""
+	}
+	if output.Index(0).Kind() == reflect.Slice {
+		innerType := generateCallbackType(output.Index(0))
+		return fmt.Sprintf("Vector (%s) %d", innerType, output.Len())
+	}
+	return fmt.Sprintf("Vector F %d", output.Len())
+}
+
 func ExportGadget(gadget ExGadget) string {
 	kArgs := ""
 	if len(gadget.Outputs) == 1 {
 		kArgs = "(k: F -> Prop)"
 	} else if len(gadget.Outputs) > 1 {
-		kArgs = fmt.Sprintf("(k: Vector F %d -> Prop)", len(gadget.Outputs))
+		outputType := generateCallbackType(reflect.ValueOf(gadget.OutputsDeep))
+		kArgs = fmt.Sprintf("(k: %s -> Prop)", outputType)
 	}
 	inAssignment := gadget.Args
 

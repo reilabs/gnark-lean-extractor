@@ -115,6 +115,7 @@ type ExGadget struct {
 	Arity     int
 	Code      []App
 	Outputs   []Operand
+	OutputsDeep   interface{}
 	Extractor *CodeExtractor
 	Fields    []schema.Field
 	Args      []ExArg
@@ -173,7 +174,45 @@ func flattenSlice(value reflect.Value) []frontend.Variable {
 	return value.Interface().([]frontend.Variable)
 }
 
-func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
+func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
+	// extra[0] -> i
+	// extra[1] -> len
+	switch v := (gOutputs).(type) {
+	case Input, Gate:
+		if len(extra) == 2 {
+			return Proj{gate, extra[0], extra[1]}
+		}
+		return gate
+	case Proj:
+		v.Operand = replaceArg(v.Operand, gate, extra...).(Operand)
+		return v
+	case []frontend.Variable:
+		res := make([]frontend.Variable, len(v))
+		for i,o := range v {
+			res[i] = replaceArg(o, gate, []int{i, len(v)}...)
+		}
+		return res
+	case [][]frontend.Variable:
+		res := make([][]frontend.Variable, len(v))
+		for i,o := range v {
+			res[i] = replaceArg(o, gate, []int{i, len(v)}...).([]frontend.Variable)
+		}
+		return res
+	case [][][]frontend.Variable:
+		res := make([][][]frontend.Variable, len(v))
+		for i,o := range v {
+			res[i] = replaceArg(o, gate, []int{i, len(v)}...).([][]frontend.Variable)
+		}
+		return res
+	case nil:
+		return []frontend.Variable{}
+	default:
+		fmt.Printf("invalid argument of type %T %#v\n", gOutputs, gOutputs)
+		panic("invalid argument")
+	}
+}
+
+func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) interface{} {
 	args := []frontend.Variable{}
 
 	rv := reflect.Indirect(reflect.ValueOf(gadget))
@@ -198,17 +237,11 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable 
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
 	}
-
 	gate := g.Extractor.AddApp(g, args...)
-	outs := make([]frontend.Variable, len(g.Outputs))
-	if len(g.Outputs) == 1 {
-		outs[0] = gate
-	} else {
-		for i := range g.Outputs {
-			outs[i] = Proj{gate, i, len(g.Outputs)}
-		}
-	}
-	return outs
+	
+	res := replaceArg(g.OutputsDeep, gate)
+	return res
+
 }
 
 func cloneGadget(gadget abstractor.GadgetDefinition) abstractor.GadgetDefinition {
@@ -223,7 +256,7 @@ func cloneGadget(gadget abstractor.GadgetDefinition) abstractor.GadgetDefinition
 	return tmp_gadget.Interface().(abstractor.GadgetDefinition)
 }
 
-func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
+func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) interface{} {
 	// Copying `gadget` because `DefineGadget` needs to manipulate the input
 	clonedGadget := cloneGadget(gadget)
 	g := ce.DefineGadget(clonedGadget)
@@ -553,13 +586,21 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	oldCode := ce.Code
 	ce.Code = make([]App, 0)
 	outputs := gadget.DefineGadget(ce)
+
+	flatOutput := []frontend.Variable{outputs}
+	vOutputs := reflect.ValueOf(outputs)
+	if vOutputs.Kind() == reflect.Slice {
+		flatOutput = flattenSlice(vOutputs)
+	}
+
 	newCode := ce.Code
 	ce.Code = oldCode
 	exGadget := ExGadget{
 		Name:      name,
 		Arity:     arity,
 		Code:      newCode,
-		Outputs:   sanitizeVars(outputs...),
+		Outputs:   sanitizeVars(flatOutput...),
+		OutputsDeep: outputs,
 		Extractor: ce,
 		Fields:    schema.Fields,
 		Args:      args,

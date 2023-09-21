@@ -3,11 +3,11 @@ package abstractor
 import "github.com/consensys/gnark/frontend"
 
 type Gadget interface {
-	Call(gadget GadgetDefinition) []frontend.Variable
+	Call(gadget GadgetDefinition) interface{}
 }
 
 type GadgetDefinition interface {
-	DefineGadget(api API) []frontend.Variable
+	DefineGadget(api API) interface{}
 }
 
 type API interface {
@@ -15,7 +15,7 @@ type API interface {
 	DefineGadget(gadget GadgetDefinition) Gadget
 
 	frontend.API
-	Call(gadget GadgetDefinition) []frontend.Variable
+	Call(gadget GadgetDefinition) interface{}
 }
 
 type Circuit interface {
@@ -27,7 +27,7 @@ func Concretize(api frontend.API, circuit Circuit) error {
 	return circuit.AbsDefine(&Concretizer{api})
 }
 
-func CallGadget(api frontend.API, circuit GadgetDefinition) []frontend.Variable {
+func CallGadget(api frontend.API, circuit GadgetDefinition) interface{} {
 	_, ok := api.(API)
 	if ok {
 		// The consequence of calling CallGadget with abstractor.API is that

@@ -68,12 +68,28 @@ func checkOutput(t *testing.T, testOutput string) {
 }
 
 // Example: checking slices optimisation
+type TwoSlices struct {
+	TwoDim   [][]frontend.Variable
+}
+
+func (gadget TwoSlices) DefineGadget(api abstractor.API) interface{} {
+	return gadget.TwoDim
+}
+
+type ThreeSlices struct {
+	ThreeDim [][][]frontend.Variable
+}
+
+func (gadget ThreeSlices) DefineGadget(api abstractor.API) interface{} {
+	return gadget.ThreeDim
+}
+
 type SlicesGadget struct {
 	TwoDim   [][]frontend.Variable
 	ThreeDim [][][]frontend.Variable
 }
 
-func (gadget SlicesGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget SlicesGadget) DefineGadget(api abstractor.API) interface{} {
 	return append(gadget.ThreeDim[0][0], gadget.TwoDim[0]...)
 }
 
@@ -85,20 +101,26 @@ type SlicesOptimisation struct {
 }
 
 func (circuit *SlicesOptimisation) AbsDefine(api abstractor.API) error {
-	api.Call(SlicesGadget{
+	Call1(api, SlicesGadget{
 		TwoDim:   circuit.TwoDim,
 		ThreeDim: circuit.ThreeDim,
 	})
-	api.Call(SlicesGadget{
+	Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{circuit.TwoDim[1], circuit.TwoDim[0]},
 		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0]},
 	})
-	api.Call(SlicesGadget{
+	Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{{circuit.TwoDim[1][1]}, {circuit.TwoDim[1][0]}},
 		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0], circuit.ThreeDim[1]},
 	})
-	api.Call(SlicesGadget{
+	Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{circuit.TwoDim[1], {circuit.TwoDim[1][0], circuit.TwoDim[0][0], circuit.TwoDim[1][1]}},
+		ThreeDim: circuit.ThreeDim,
+	})
+	Call2(api, TwoSlices{
+		TwoDim:   circuit.TwoDim,
+	})
+	Call3(api, ThreeSlices{
 		ThreeDim: circuit.ThreeDim,
 	})
 
@@ -149,8 +171,8 @@ type DeletionProof struct {
 	Depth     int
 }
 
-func (gadget DeletionProof) DefineGadget(api abstractor.API) []frontend.Variable {
-	return []frontend.Variable{gadget.PreRoot}
+func (gadget DeletionProof) DefineGadget(api abstractor.API) interface{} {
+	return gadget.PreRoot
 }
 
 type DeletionMbuCircuit struct {
@@ -171,14 +193,14 @@ type DeletionMbuCircuit struct {
 }
 
 func (circuit *DeletionMbuCircuit) AbsDefine(api abstractor.API) error {
-	root := api.Call(DeletionProof{
+	root := Call(api, DeletionProof{
 		DeletionIndices: circuit.DeletionIndices,
 		PreRoot:         circuit.PreRoot,
 		IdComms:         circuit.IdComms,
 		MerkleProofs:    circuit.MerkleProofs,
 		BatchSize:       circuit.BatchSize,
 		Depth:           circuit.Depth,
-	})[0]
+	})
 
 	// Final root needs to match.
 	api.AssertIsEqual(root, circuit.PostRoot)
@@ -220,7 +242,7 @@ type IntArrayGadget struct {
 	NestedMatrix [2][2]int
 }
 
-func (gadget IntArrayGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget IntArrayGadget) DefineGadget(api abstractor.API) interface{} {
 	r := api.FromBinary(gadget.In...)
 	api.Mul(gadget.Matrix[0], gadget.Matrix[1])
 	return []frontend.Variable{r, r, r}
@@ -232,7 +254,7 @@ type AnotherCircuit struct {
 }
 
 func (circuit *AnotherCircuit) AbsDefine(api abstractor.API) error {
-	r := api.Call(IntArrayGadget{
+	r := Call1(api, IntArrayGadget{
 		circuit.In,
 		circuit.Matrix[0],
 		circuit.Matrix,
@@ -269,7 +291,7 @@ type OptimisedVectorGadget struct {
 	In frontend.Variable
 }
 
-func (gadget OptimisedVectorGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget OptimisedVectorGadget) DefineGadget(api abstractor.API) interface{} {
 	return api.ToBinary(gadget.In, 3)
 }
 
@@ -280,7 +302,7 @@ type VectorGadget struct {
 	Nested [][]frontend.Variable
 }
 
-func (gadget VectorGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget VectorGadget) DefineGadget(api abstractor.API) interface{} {
 	var sum frontend.Variable
 	for i := 0; i < len(gadget.In_1); i++ {
 		sum = api.Mul(gadget.In_1[i], gadget.In_2[i])
@@ -300,7 +322,7 @@ func (circuit *ToBinaryCircuit) AbsDefine(api abstractor.API) error {
 
 	api.Add(circuit.Double[2][2], circuit.Double[1][1], circuit.Double[0][0])
 	api.Mul(bin[1], bout[1])
-	d := api.Call(VectorGadget{circuit.Double[2][:], circuit.Double[0][:], circuit.Double})
+	d := Call1(api, VectorGadget{circuit.Double[2][:], circuit.Double[0][:], circuit.Double})
 	api.Mul(d[2], d[1])
 
 	return nil
@@ -376,7 +398,7 @@ type ReturnItself struct {
 	Out  []frontend.Variable
 }
 
-func (gadget ReturnItself) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget ReturnItself) DefineGadget(api abstractor.API) interface{} {
 	for i := 0; i < len(gadget.In_1); i++ {
 		gadget.Out[i] = api.Mul(gadget.In_1[i], gadget.In_1[i])
 	}
@@ -389,13 +411,13 @@ type SliceGadget struct {
 	In_2 []frontend.Variable
 }
 
-func (gadget SliceGadget) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget SliceGadget) DefineGadget(api abstractor.API) interface{} {
 	for i := 0; i < len(gadget.In_1); i++ {
 		api.Mul(gadget.In_1[i], gadget.In_2[i])
 	}
 
 	r := api.FromBinary(gadget.In_1...)
-	return []frontend.Variable{r}
+	return r
 }
 
 type CircuitWithParameter struct {
@@ -408,7 +430,7 @@ type CircuitWithParameter struct {
 func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
 	D := make([]frontend.Variable, 3)
 	for i := 0; i < len(circuit.Path); i++ {
-		D = api.Call(ReturnItself{
+		D = Call1(api, ReturnItself{
 			In_1: circuit.Path,
 			Out:  D,
 		})
@@ -425,10 +447,10 @@ func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
 
 	dec := api.FromBinary(bin...)
 	api.AssertIsEqual(circuit.Param, dec)
-	api.Call(SliceGadget{circuit.Path, circuit.Path})
+	Call(api, SliceGadget{circuit.Path, circuit.Path})
 
 	api.Mul(circuit.Path[0], circuit.Path[0])
-	api.Call(SliceGadget{circuit.Tree, circuit.Tree})
+	Call(api, SliceGadget{circuit.Tree, circuit.Tree})
 	api.AssertIsEqual(circuit.Param, circuit.In)
 
 	return nil
@@ -456,9 +478,9 @@ type DummyHash struct {
 	In_2 frontend.Variable
 }
 
-func (gadget DummyHash) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget DummyHash) DefineGadget(api abstractor.API) interface{} {
 	r := api.Mul(gadget.In_1, gadget.In_2)
-	return []frontend.Variable{r}
+	return r
 }
 
 type MerkleRecover struct {
@@ -471,8 +493,8 @@ type MerkleRecover struct {
 func (circuit *MerkleRecover) AbsDefine(api abstractor.API) error {
 	current := circuit.Element
 	for i := 0; i < len(circuit.Path); i++ {
-		leftHash := api.Call(DummyHash{current, circuit.Proof[i]})[0]
-		rightHash := api.Call(DummyHash{circuit.Proof[i], current})[0]
+		leftHash := Call(api, DummyHash{current, circuit.Proof[i]})
+		rightHash := Call(api, DummyHash{circuit.Proof[i], current})
 		current = api.Select(circuit.Path[i], rightHash, leftHash)
 	}
 	api.AssertIsEqual(current, circuit.Root)
@@ -500,12 +522,12 @@ type MyWidget struct {
 	Num    uint32
 }
 
-func (gadget MyWidget) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget MyWidget) DefineGadget(api abstractor.API) interface{} {
 	sum := api.Add(gadget.Test_1, gadget.Test_2)
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
 	r := api.Div(sum, mul)
 	api.AssertIsBoolean(gadget.Num)
-	return []frontend.Variable{r}
+	return r
 }
 
 type MySecondWidget struct {
@@ -514,9 +536,9 @@ type MySecondWidget struct {
 	Num    int
 }
 
-func (gadget MySecondWidget) DefineGadget(api abstractor.API) []frontend.Variable {
+func (gadget MySecondWidget) DefineGadget(api abstractor.API) interface{} {
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
-	snd := api.Call(MyWidget{gadget.Test_1, gadget.Test_2, uint32(gadget.Num)})[0]
+	snd := Call(api, MyWidget{gadget.Test_1, gadget.Test_2, uint32(gadget.Num)})
 	api.Mul(mul, snd)
 	return []frontend.Variable{}
 }
@@ -530,7 +552,7 @@ type TwoGadgets struct {
 func (circuit *TwoGadgets) AbsDefine(api abstractor.API) error {
 	sum := api.Add(circuit.In_1, circuit.In_2)
 	prod := api.Mul(circuit.In_1, circuit.In_2)
-	api.Call(MySecondWidget{sum, prod, circuit.Num})
+	CallVoid(api, MySecondWidget{sum, prod, circuit.Num})
 	return nil
 }
 
