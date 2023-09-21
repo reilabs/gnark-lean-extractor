@@ -69,7 +69,7 @@ func checkOutput(t *testing.T, testOutput string) {
 
 // Example: checking slices optimisation
 type TwoSlices struct {
-	TwoDim   [][]frontend.Variable
+	TwoDim [][]frontend.Variable
 }
 
 func (gadget TwoSlices) DefineGadget(api abstractor.API) interface{} {
@@ -118,7 +118,7 @@ func (circuit *SlicesOptimisation) AbsDefine(api abstractor.API) error {
 		ThreeDim: circuit.ThreeDim,
 	})
 	Call2(api, TwoSlices{
-		TwoDim:   circuit.TwoDim,
+		TwoDim: circuit.TwoDim,
 	})
 	Call3(api, ThreeSlices{
 		ThreeDim: circuit.ThreeDim,

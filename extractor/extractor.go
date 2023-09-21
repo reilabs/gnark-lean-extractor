@@ -111,14 +111,14 @@ type Code struct {
 }
 
 type ExGadget struct {
-	Name      string
-	Arity     int
-	Code      []App
-	Outputs   []Operand
-	OutputsDeep   interface{}
-	Extractor *CodeExtractor
-	Fields    []schema.Field
-	Args      []ExArg
+	Name        string
+	Arity       int
+	Code        []App
+	Outputs     []Operand
+	OutputsDeep interface{}
+	Extractor   *CodeExtractor
+	Fields      []schema.Field
+	Args        []ExArg
 }
 
 func (g *ExGadget) isOp() {}
@@ -188,19 +188,19 @@ func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
 		return v
 	case []frontend.Variable:
 		res := make([]frontend.Variable, len(v))
-		for i,o := range v {
+		for i, o := range v {
 			res[i] = replaceArg(o, gate, []int{i, len(v)}...)
 		}
 		return res
 	case [][]frontend.Variable:
 		res := make([][]frontend.Variable, len(v))
-		for i,o := range v {
+		for i, o := range v {
 			res[i] = replaceArg(o, gate, []int{i, len(v)}...).([]frontend.Variable)
 		}
 		return res
 	case [][][]frontend.Variable:
 		res := make([][][]frontend.Variable, len(v))
-		for i,o := range v {
+		for i, o := range v {
 			res[i] = replaceArg(o, gate, []int{i, len(v)}...).([][]frontend.Variable)
 		}
 		return res
@@ -238,7 +238,7 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) interface{} {
 		}
 	}
 	gate := g.Extractor.AddApp(g, args...)
-	
+
 	res := replaceArg(g.OutputsDeep, gate)
 	return res
 
@@ -596,14 +596,14 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	newCode := ce.Code
 	ce.Code = oldCode
 	exGadget := ExGadget{
-		Name:      name,
-		Arity:     arity,
-		Code:      newCode,
-		Outputs:   sanitizeVars(flatOutput...),
+		Name:        name,
+		Arity:       arity,
+		Code:        newCode,
+		Outputs:     sanitizeVars(flatOutput...),
 		OutputsDeep: outputs,
-		Extractor: ce,
-		Fields:    schema.Fields,
-		Args:      args,
+		Extractor:   ce,
+		Fields:      schema.Fields,
+		Args:        args,
 	}
 	ce.Gadgets = append(ce.Gadgets, exGadget)
 	return &exGadget
