@@ -184,8 +184,7 @@ func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
 		}
 		return gate
 	case Proj:
-		v.Operand = replaceArg(v.Operand, gate, extra...).(Operand)
-		return v
+		return Proj{gate, extra[0], extra[1]}
 	case []frontend.Variable:
 		res := make([]frontend.Variable, len(v))
 		for i, o := range v {
