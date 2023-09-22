@@ -174,6 +174,13 @@ func flattenSlice(value reflect.Value) []frontend.Variable {
 	return value.Interface().([]frontend.Variable)
 }
 
+func updateProj(gate Operand, extra ...int) Proj {
+	if len(extra) == 2 {
+		return Proj{gate, extra[0], extra[1]}
+	}
+	return Proj{updateProj(gate, extra[:len(extra)-2]...), extra[len(extra)-2], extra[len(extra)-1]}
+}
+
 func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
 	// extra[0] -> i
 	// extra[1] -> len
@@ -184,27 +191,26 @@ func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
 		}
 		return gate
 	case Proj:
-		if len(extra) == 2 {
-			return Proj{gate, extra[0], extra[1]}
+		if len(extra) >= 2 {
+			return updateProj(gate, extra...)
 		}
-		v.Operand = replaceArg(v.Operand, gate).(Operand)
-		return v
+		return gate
 	case []frontend.Variable:
 		res := make([]frontend.Variable, len(v))
 		for i, o := range v {
-			res[i] = replaceArg(o, gate, []int{i, len(v)}...)
+			res[i] = replaceArg(o, gate, append(extra, []int{i, len(v)}...)...)
 		}
 		return res
 	case [][]frontend.Variable:
 		res := make([][]frontend.Variable, len(v))
 		for i, o := range v {
-			res[i] = replaceArg(o, gate, []int{i, len(v)}...).([]frontend.Variable)
+			res[i] = replaceArg(o, gate, append(extra, []int{i, len(v)}...)...).([]frontend.Variable)
 		}
 		return res
 	case [][][]frontend.Variable:
 		res := make([][][]frontend.Variable, len(v))
 		for i, o := range v {
-			res[i] = replaceArg(o, gate, []int{i, len(v)}...).([][]frontend.Variable)
+			res[i] = replaceArg(o, gate, append(extra, []int{i, len(v)}...)...).([][]frontend.Variable)
 		}
 		return res
 	case nil:
