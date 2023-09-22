@@ -7,10 +7,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/reilabs/gnark-lean-extractor/abstractor"
-	"golang.org/x/exp/slices"
-
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
 )
@@ -19,7 +15,7 @@ func isWhitespacePresent(input string) bool {
 	return regexp.MustCompile(`\s`).MatchString(input)
 }
 
-func ExportPrelude(name string, order *big.Int) string {
+func exportPrelude(name string, order *big.Int) string {
 	trimmedName := strings.TrimSpace(name)
 	if isWhitespacePresent(trimmedName) {
 		panic("Whitespace isn't allowed in namespace tag")
@@ -38,7 +34,7 @@ abbrev F := ZMod Order`, trimmedName, order.Text(16))
 	return s
 }
 
-func ExportFooter(name string) string {
+func exportFooter(name string) string {
 	trimmedName := strings.TrimSpace(name)
 	if isWhitespacePresent(trimmedName) {
 		panic("Whitespace isn't allowed in namespace tag")
@@ -58,7 +54,7 @@ func generateCallbackType(output reflect.Value) string {
 	return fmt.Sprintf("Vector F %d", output.Len())
 }
 
-func ExportGadget(gadget ExGadget) string {
+func exportGadget(gadget ExGadget) string {
 	kArgs := ""
 	if len(gadget.Outputs) == 1 {
 		kArgs = "(k: F -> Prop)"
@@ -71,28 +67,28 @@ func ExportGadget(gadget ExGadget) string {
 	return fmt.Sprintf("def %s %s %s: Prop :=\n%s", gadget.Name, genArgs(inAssignment), kArgs, genGadgetBody(inAssignment, gadget))
 }
 
-func ExportGadgets(exGadgets []ExGadget) string {
+func exportGadgets(exGadgets []ExGadget) string {
 	gadgets := make([]string, len(exGadgets))
 	for i, gadget := range exGadgets {
-		gadgets[i] = ExportGadget(gadget)
+		gadgets[i] = exportGadget(gadget)
 	}
 	return strings.Join(gadgets, "\n\n")
 }
 
-func ExportCircuit(circuit ExCircuit, name string) string {
-	gadgets := ExportGadgets(circuit.Gadgets)
+func exportCircuit(circuit ExCircuit, name string) string {
+	gadgets := exportGadgets(circuit.Gadgets)
 	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
-	prelude := ExportPrelude(name, circuit.Field.ScalarField())
-	footer := ExportFooter(name)
+	prelude := exportPrelude(name, circuit.Field.ScalarField())
+	footer := exportFooter(name)
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, gadgets, circ, footer)
 }
 
-func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
+func arrayInit(f schema.Field, v reflect.Value, op Operand) error {
 	for i := 0; i < f.ArraySize; i++ {
 		op := Proj{op, i, f.ArraySize}
 		switch len(f.SubFields) {
 		case 1:
-			ArrayInit(f.SubFields[0], v.Index(i), op)
+			arrayInit(f.SubFields[0], v.Index(i), op)
 		case 0:
 			if v.Len() != f.ArraySize {
 				// Slices of this type aren't supported yet [[<nil> <nil> <nil>] [<nil> <nil>]]
@@ -109,7 +105,7 @@ func ArrayInit(f schema.Field, v reflect.Value, op Operand) error {
 	return nil
 }
 
-func ArrayZero(v reflect.Value) {
+func arrayZero(v reflect.Value) {
 	switch v.Kind() {
 	case reflect.Slice:
 		if v.Len() != 0 {
@@ -117,7 +113,7 @@ func ArrayZero(v reflect.Value) {
 			// until most nested array
 			if v.Addr().Elem().Index(0).Kind() == reflect.Slice {
 				for i := 0; i < v.Len(); i++ {
-					ArrayZero(v.Addr().Elem().Index(i))
+					arrayZero(v.Addr().Elem().Index(i))
 				}
 			} else {
 				zero_array := make([]frontend.Variable, v.Len(), v.Len())
@@ -129,7 +125,7 @@ func ArrayZero(v reflect.Value) {
 	}
 }
 
-func CircuitInit(class any, schema *schema.Schema) error {
+func circuitInit(class any, schema *schema.Schema) error {
 	// https://stackoverflow.com/a/49704408
 	// https://stackoverflow.com/a/14162161
 	// https://stackoverflow.com/a/63422049
@@ -159,12 +155,12 @@ func CircuitInit(class any, schema *schema.Schema) error {
 		// initialise each element in the array
 
 		if field_type.Kind() == reflect.Array {
-			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
+			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
 		} else if field_type.Kind() == reflect.Slice {
 			// Recreate a zeroed array to remove overlapping pointers if input
 			// arguments are duplicated (i.e. `api.Call(SliceGadget{circuit.Path, circuit.Path})`)
-			ArrayZero(tmp.Elem().FieldByName(field_name))
-			ArrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
+			arrayZero(tmp.Elem().FieldByName(field_name))
+			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
 		} else if field_type.Kind() == reflect.Interface {
 			init := Input{j}
 			value := reflect.ValueOf(init)
@@ -177,17 +173,17 @@ func CircuitInit(class any, schema *schema.Schema) error {
 	return nil
 }
 
-func KindOfField(a any, s string) reflect.Kind {
+func kindOfField(a any, s string) reflect.Kind {
 	v := reflect.ValueOf(a).Elem()
 	f := v.FieldByName(s)
 	return f.Kind()
 }
 
-func CircuitArgs(field schema.Field) ExArgType {
+func circuitArgs(field schema.Field) ExArgType {
 	// Handling only subfields which are nested arrays
 	switch len(field.SubFields) {
 	case 1:
-		subType := CircuitArgs(field.SubFields[0])
+		subType := circuitArgs(field.SubFields[0])
 		return ExArgType{field.ArraySize, &subType}
 	case 0:
 		return ExArgType{field.ArraySize, nil}
@@ -196,155 +192,24 @@ func CircuitArgs(field schema.Field) ExArgType {
 	}
 }
 
-func GetExArgs(circuit any, fields []schema.Field) []ExArg {
+func getExArgs(circuit any, fields []schema.Field) []ExArg {
 	args := []ExArg{}
 	for _, f := range fields {
-		kind := KindOfField(circuit, f.Name)
-		arg := ExArg{f.Name, kind, CircuitArgs(f)}
+		kind := kindOfField(circuit, f.Name)
+		arg := ExArg{f.Name, kind, circuitArgs(f)}
 		args = append(args, arg)
 	}
 	return args
 }
 
 // Cloned version of NewSchema without constraints
-func GetSchema(circuit any) (*schema.Schema, error) {
+func getSchema(circuit any) (*schema.Schema, error) {
 	tVariable := reflect.ValueOf(struct{ A frontend.Variable }{}).FieldByName("A").Type()
 	return schema.New(circuit, tVariable)
 }
 
 func getStructName(circuit any) string {
 	return reflect.TypeOf(circuit).Elem().Name()
-}
-
-func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace string) (string, error) {
-	schema, err := GetSchema(circuit)
-	if err != nil {
-		return "", err
-	}
-
-	err = CircuitInit(circuit, schema)
-	if err != nil {
-		fmt.Println("CircuitInit error!")
-		fmt.Println(err.Error())
-	}
-
-	api := CodeExtractor{
-		Code:    []App{},
-		Gadgets: []ExGadget{},
-		FieldID: field,
-	}
-
-	err = circuit.AbsDefine(&api)
-	if err != nil {
-		return "", err
-	}
-
-	extractorCircuit := ExCircuit{
-		Inputs:  GetExArgs(circuit, schema.Fields),
-		Gadgets: api.Gadgets,
-		Code:    api.Code,
-		Field:   api.FieldID,
-	}
-	out := ExportCircuit(extractorCircuit, namespace)
-	return out, nil
-}
-
-func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
-	name := getStructName(circuit)
-	return CircuitToLeanWithName(circuit, field, name)
-}
-
-func ExtractCircuits(namespace string, field ecc.ID, circuits ...abstractor.Circuit) (string, error) {
-	api := CodeExtractor{
-		Code:    []App{},
-		Gadgets: []ExGadget{},
-		FieldID: field,
-	}
-
-	var circuits_extracted []string
-	var past_circuits []string
-
-	extractorCircuit := ExCircuit{
-		Inputs:  []ExArg{},
-		Gadgets: []ExGadget{},
-		Code:    []App{},
-		Field:   api.FieldID,
-	}
-
-	for _, circuit := range circuits {
-		schema, err := GetSchema(circuit)
-		if err != nil {
-			return "", err
-		}
-		args := GetExArgs(circuit, schema.Fields)
-		name := generateUniqueName(circuit, args)
-		if slices.Contains(past_circuits, name) {
-			continue
-		}
-		past_circuits = append(past_circuits, name)
-
-		err = CircuitInit(circuit, schema)
-		if err != nil {
-			fmt.Println("CircuitInit error!")
-			fmt.Println(err.Error())
-		}
-		err = circuit.AbsDefine(&api)
-		if err != nil {
-			return "", err
-		}
-
-		extractorCircuit.Inputs = args
-		extractorCircuit.Code = api.Code
-
-		circ := fmt.Sprintf("def %s %s: Prop :=\n%s", name, genArgs(extractorCircuit.Inputs), genCircuitBody(extractorCircuit))
-		circuits_extracted = append(circuits_extracted, circ)
-
-		// Resetting elements for next circuit
-		extractorCircuit.Inputs = []ExArg{}
-		extractorCircuit.Code = []App{}
-		api.Code = []App{}
-	}
-
-	prelude := ExportPrelude(namespace, extractorCircuit.Field.ScalarField())
-	gadgets := ExportGadgets(api.Gadgets)
-	footer := ExportFooter(namespace)
-	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, gadgets, strings.Join(circuits_extracted, "\n\n"), footer), nil
-}
-
-func GadgetToLeanWithName(gadget abstractor.GadgetDefinition, field ecc.ID, namespace string) (string, error) {
-	api := CodeExtractor{
-		Code:    []App{},
-		Gadgets: []ExGadget{},
-		FieldID: field,
-	}
-
-	api.DefineGadget(gadget)
-	gadgets := ExportGadgets(api.Gadgets)
-	prelude := ExportPrelude(namespace, api.FieldID.ScalarField())
-	footer := ExportFooter(namespace)
-	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets, footer), nil
-}
-
-func GadgetToLean(gadget abstractor.GadgetDefinition, field ecc.ID) (string, error) {
-	name := getStructName(gadget)
-	return GadgetToLeanWithName(gadget, field, name)
-}
-
-func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.GadgetDefinition) (string, error) {
-	api := CodeExtractor{
-		Code:    []App{},
-		Gadgets: []ExGadget{},
-		FieldID: field,
-	}
-
-	for _, gadget := range gadgets {
-		api.DefineGadget(gadget)
-	}
-
-	gadgets_string := ExportGadgets(api.Gadgets)
-	prelude := ExportPrelude(namespace, api.FieldID.ScalarField())
-	footer := ExportFooter(namespace)
-	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets_string, footer), nil
 }
 
 func genNestedArrays(a ExArgType) string {

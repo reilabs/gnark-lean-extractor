@@ -3,7 +3,7 @@ import ProvenZk.Ext.Vector
 
 set_option linter.unusedVariables false
 
-namespace DummyCircuit
+namespace MyCircuit
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
@@ -16,4 +16,4 @@ def circuit (In_1: F) (In_2: F) (Out: F): Prop :=
     Gates.eq gate_0 Out ∧
     True
 
-end DummyCircuit
+end MyCircuit

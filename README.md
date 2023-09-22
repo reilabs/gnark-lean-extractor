@@ -40,15 +40,15 @@ func (circuit *MyCircuit) AbsDefine(api abstractor.API) error {
     return nil
 }
 
-func (circuit *MyCircuit) Define(api frontend.API) error {
-    return abstractor.Concretize(api, circuit)
+func (circuit MyCircuit) Define(api frontend.API) error {
+    return abstractor.Concretize(api, &circuit)
 }
 ```
 
 Once you export this to Lean, you get a definition as follows:
 
 ```lean
-namespace DummyCircuit
+namespace MyCircuit
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
@@ -59,7 +59,7 @@ def circuit (In_1: F) (In_2: F) (Out: F): Prop :=
     Gates.eq gate_0 Out ∧
     True
 
-end DummyCircuit
+end MyCircuit
 ```
 
 Further examples of this process with various levels of complexity can be seen

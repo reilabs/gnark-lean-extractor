@@ -577,13 +577,13 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
 		panic("DefineGadget only takes pointers to the gadget")
 	}
-	schema, _ := GetSchema(gadget)
-	CircuitInit(gadget, schema)
+	schema, _ := getSchema(gadget)
+	circuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
 	// for arity because each array element is considered
 	// a parameter
 	arity := len(schema.Fields)
-	args := GetExArgs(gadget, schema.Fields)
+	args := getExArgs(gadget, schema.Fields)
 
 	name := generateUniqueName(gadget, args)
 
