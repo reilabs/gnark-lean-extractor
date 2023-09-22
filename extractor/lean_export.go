@@ -83,48 +83,6 @@ func exportCircuit(circuit ExCircuit, name string) string {
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, gadgets, circ, footer)
 }
 
-func arrayInit(f schema.Field, v reflect.Value, op Operand) error {
-	for i := 0; i < f.ArraySize; i++ {
-		op := Proj{op, i, f.ArraySize}
-		switch len(f.SubFields) {
-		case 1:
-			arrayInit(f.SubFields[0], v.Index(i), op)
-		case 0:
-			if v.Len() != f.ArraySize {
-				// Slices of this type aren't supported yet [[<nil> <nil> <nil>] [<nil> <nil>]]
-				// gnark newSchema doesn't handle different dimensions
-				fmt.Printf("Wrong slices dimensions %+v\n", v)
-				panic("Only slices dimensions not matching")
-			}
-			value := reflect.ValueOf(op)
-			v.Index(i).Set(value)
-		default:
-			panic("Only nested arrays supported in SubFields")
-		}
-	}
-	return nil
-}
-
-func arrayZero(v reflect.Value) {
-	switch v.Kind() {
-	case reflect.Slice:
-		if v.Len() != 0 {
-			// Check if there are nested arrays. If yes, continue recursion
-			// until most nested array
-			if v.Addr().Elem().Index(0).Kind() == reflect.Slice {
-				for i := 0; i < v.Len(); i++ {
-					arrayZero(v.Addr().Elem().Index(i))
-				}
-			} else {
-				zero_array := make([]frontend.Variable, v.Len(), v.Len())
-				v.Set(reflect.ValueOf(&zero_array).Elem())
-			}
-		}
-	default:
-		panic("Only nested slices supported in SubFields of slices")
-	}
-}
-
 func circuitInit(class any, schema *schema.Schema) error {
 	// https://stackoverflow.com/a/49704408
 	// https://stackoverflow.com/a/14162161
@@ -173,12 +131,6 @@ func circuitInit(class any, schema *schema.Schema) error {
 	return nil
 }
 
-func kindOfField(a any, s string) reflect.Kind {
-	v := reflect.ValueOf(a).Elem()
-	f := v.FieldByName(s)
-	return f.Kind()
-}
-
 func circuitArgs(field schema.Field) ExArgType {
 	// Handling only subfields which are nested arrays
 	switch len(field.SubFields) {
@@ -206,10 +158,6 @@ func getExArgs(circuit any, fields []schema.Field) []ExArg {
 func getSchema(circuit any) (*schema.Schema, error) {
 	tVariable := reflect.ValueOf(struct{ A frontend.Variable }{}).FieldByName("A").Type()
 	return schema.New(circuit, tVariable)
-}
-
-func getStructName(circuit any) string {
-	return reflect.TypeOf(circuit).Elem().Name()
 }
 
 func genNestedArrays(a ExArgType) string {
@@ -521,7 +469,6 @@ func getStack(operand ProjArray) []int {
 }
 
 func expectedOperand(op Proj, argIndex Operand, indices []int) bool {
-	// fmt.Printf("p %+v %+v %+v\n", argIndex, indices, op)
 	if op.Index != indices[len(indices)-1] {
 		return false
 	}
@@ -574,15 +521,12 @@ func isVectorComplete(operand ProjArray) (bool, Operand) {
 	}
 
 	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}) {
-		//fmt.Printf("operand %d %+v\n", len(operand.Projs), operand)
 		sliceDimensions := getStack(operand) // Outermost dimension is at index 0
 		if len(sliceDimensions) == 0 {
 			return false, operand
 		}
-		// fmt.Printf("Stack %+v\n", sliceDimensions)
 		firstOperand := getFirstOperand(operand)
 		argIdx := getIndex(firstOperand)
-		// fmt.Printf("Index %+v\n", argIdx)
 		if !checkDimensions(operand, sliceDimensions, argIdx) {
 			return false, operand
 		}
