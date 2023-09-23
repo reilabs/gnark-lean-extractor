@@ -19,14 +19,14 @@ import (
 // When go is running in test mode, it prints the stack trace to aid
 // debugging.
 func recoverError() (err error) {
-    if (recover() != nil) {
+	if recover() != nil {
 		if flag.Lookup("test.v") != nil {
 			stack := string(debug.Stack())
 			fmt.Println(stack)
 		}
-        err = errors.New("Panic extracting circuit to Lean")
-    }
-    return nil
+		err = errors.New("Panic extracting circuit to Lean")
+	}
+	return nil
 }
 
 // arrayToSlice returns a slice of elements identical to
