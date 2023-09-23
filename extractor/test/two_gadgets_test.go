@@ -35,7 +35,7 @@ func (gadget MySecondWidget) DefineGadget(api abstractor.API) interface{} {
     mul := api.Mul(gadget.Test_1, gadget.Test_2)
     snd := extractor.Call(api, MyWidget{gadget.Test_1, gadget.Test_2, uint32(gadget.Num)})
     api.Mul(mul, snd)
-    return []frontend.Variable{}
+    return nil
 }
 
 type TwoGadgets struct {

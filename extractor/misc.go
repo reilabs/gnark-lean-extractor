@@ -11,6 +11,8 @@ import (
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
 )
 
+// arrayToSlice returns a slice of elements identical to
+// the input array `v`
 func arrayToSlice(v reflect.Value) []frontend.Variable {
 	if v.Len() == 0 {
 		return []frontend.Variable{}
@@ -62,6 +64,7 @@ func flattenSlice(value reflect.Value) []frontend.Variable {
 	return value.Interface().([]frontend.Variable)
 }
 
+// arrayInit generates the Proj{} object for each element of v
 func arrayInit(f schema.Field, v reflect.Value, op Operand) error {
 	for i := 0; i < f.ArraySize; i++ {
 		op := Proj{op, i, f.ArraySize}
@@ -84,6 +87,9 @@ func arrayInit(f schema.Field, v reflect.Value, op Operand) error {
 	return nil
 }
 
+// arrayZero sets all the elements of the input slice v to nil.
+// It is used when initialising a new circuit or gadget to ensure
+// the object is clean
 func arrayZero(v reflect.Value) {
 	switch v.Kind() {
 	case reflect.Slice:
@@ -104,23 +110,38 @@ func arrayZero(v reflect.Value) {
 	}
 }
 
-func kindOfField(a any, s string) reflect.Kind {
+// kindOfField returns the Kind of field in struct a
+func kindOfField(a any, field string) reflect.Kind {
 	v := reflect.ValueOf(a).Elem()
-	f := v.FieldByName(s)
+	f := v.FieldByName(field)
 	return f.Kind()
 }
 
-func getStructName(circuit any) string {
-	return reflect.TypeOf(circuit).Elem().Name()
+// getStructName returns the name of struct a
+func getStructName(a any) string {
+	return reflect.TypeOf(a).Elem().Name()
 }
 
+// updateProj recursively creates a Proj object using the `Index` and `Size` from the
+// optional argument `extra`. It uses the argument `gate` as Operand for the innermost Proj.
+// The `extra` optional argument contains the `Index` in even indices and the `Size` in odd indices,
+// elements are discarded from the end.
 func updateProj(gate Operand, extra ...int) Proj {
 	if len(extra) == 2 {
 		return Proj{gate, extra[0], extra[1]}
+	} else if len(extra) > 0 && len(extra)%2 == 0 {
+		return Proj{updateProj(gate, extra[:len(extra)-2]...), extra[len(extra)-2], extra[len(extra)-1]}
 	}
-	return Proj{updateProj(gate, extra[:len(extra)-2]...), extra[len(extra)-2], extra[len(extra)-1]}
+	fmt.Printf("updateProj gate: %#v | extra: %+v", gate, extra)
+	panic("updateProj called with wrong number of elements in extra")
 }
 
+// replaceArg generates the object returned when calling the gadget in a circuit.
+// The object returned has the same structure as ExGadget.OutputsFlat but it needs
+// to have updated `Proj` fields. gate argument corresponds to the `Gate` object of the
+// gadget call. extra argument keeps track of the `Size` and `Index` elements of the nested
+// Proj. These need to be replaced because the output of a gadget is a combination
+// of Proj.
 func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
 	// extra[0] -> i
 	// extra[1] -> len
@@ -161,6 +182,7 @@ func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
 	}
 }
 
+// cloneGadget performs deep cloning of `gadget`
 func cloneGadget(gadget abstractor.GadgetDefinition) abstractor.GadgetDefinition {
 	dup, err := copystructure.Copy(gadget)
 	if err != nil {
@@ -202,6 +224,8 @@ func generateUniqueName(element any, args []ExArg) string {
 	return fmt.Sprintf("%s%s", reflect.TypeOf(element).Elem().Name(), suffix)
 }
 
+// getGadgetByName checks if `name` matches the ExGadget.Name of one of
+// the elements in `gadgets`
 func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
 	for _, gadget := range gadgets {
 		if gadget.Name == name {

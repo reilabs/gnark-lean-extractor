@@ -112,8 +112,8 @@ type ExGadget struct {
 	Name        string
 	Arity       int
 	Code        []App
-	Outputs     []Operand
-	OutputsDeep interface{}
+	OutputsFlat []Operand
+	Outputs     interface{}
 	Extractor   *CodeExtractor
 	Fields      []schema.Field
 	Args        []ExArg
@@ -126,6 +126,7 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) interface{} {
 
 	rv := reflect.Indirect(reflect.ValueOf(gadget))
 	rt := rv.Type()
+	// Looping through the circuit fields only.
 	for i := 0; i < rt.NumField(); i++ {
 		fld := rt.Field(i)
 		v := rv.FieldByName(fld.Name)
@@ -137,8 +138,11 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) interface{} {
 			}
 		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
-			// the field is unaddressable.
+			// the field is unaddressable. Therefore I recreate a slice
+			// with the same elements as the input array.
 			arg := arrayToSlice(v)
+			// Checking length != 0 because I need to keep nested slices
+			// as nested slices, but not empty slices
 			if len(arg) != 0 {
 				args = append(args, arg)
 			}
@@ -148,13 +152,14 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) interface{} {
 	}
 	gate := g.Extractor.AddApp(g, args...)
 
-	res := replaceArg(g.OutputsDeep, gate)
+	res := replaceArg(g.Outputs, gate)
 	return res
-
 }
 
 func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) interface{} {
-	// Copying `gadget` because `DefineGadget` needs to manipulate the input
+	// Deep copying `gadget` because `DefineGadget` needs to modify the gadget fields.
+	// This was done as a replacement to the initial method of declaring gadgets using
+	// a direct call to `Define Gadget` within the circuit and then calling GadgetDefinition.Call
 	clonedGadget := cloneGadget(gadget)
 	g := ce.DefineGadget(clonedGadget)
 	return g.Call(gadget)
@@ -223,8 +228,8 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 			// passed to gadgets
 			ops = append(ops, Const{big.NewInt(int64(0))})
 		default:
-			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
-			panic("invalid argument")
+			fmt.Printf("sanitizeVars invalid argument of type %T\n%#v\n", arg, arg)
+			panic("sanitizeVars invalid argument")
 		}
 	}
 	return ops
@@ -437,6 +442,16 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	ce.Code = make([]App, 0)
 	outputs := gadget.DefineGadget(ce)
 
+	// Handle gadgets returning nil.
+	// Without the if-statement, the nil would be replaced with (0:F)
+	// due to the case in sanitizeVars
+	if outputs == nil {
+		outputs = []frontend.Variable{}
+	}
+
+	// flattenSlice needs to be called only if there are nested
+	// slices in order to generate a slice of Operand.
+	// TODO: remove `OutputsFlat` field and use only `Outputs`
 	flatOutput := []frontend.Variable{outputs}
 	vOutputs := reflect.ValueOf(outputs)
 	if vOutputs.Kind() == reflect.Slice {
@@ -449,8 +464,8 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 		Name:        name,
 		Arity:       arity,
 		Code:        newCode,
-		Outputs:     sanitizeVars(flatOutput...),
-		OutputsDeep: outputs,
+		OutputsFlat: sanitizeVars(flatOutput...),
+		Outputs:     outputs,
 		Extractor:   ce,
 		Fields:      schema.Fields,
 		Args:        args,
