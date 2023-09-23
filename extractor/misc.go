@@ -1,8 +1,11 @@
 package extractor
 
 import (
+	"errors"
+	"flag"
 	"fmt"
 	"reflect"
+	"runtime/debug"
 	"strings"
 
 	"github.com/consensys/gnark/frontend"
@@ -10,6 +13,21 @@ import (
 	"github.com/mitchellh/copystructure"
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
 )
+
+// recoverError is used in the top level interface to prevent panic
+// caused by any of the methods in the extractor from propagating
+// When go is running in test mode, it prints the stack trace to aid
+// debugging.
+func recoverError() (err error) {
+    if (recover() != nil) {
+		if flag.Lookup("test.v") != nil {
+			stack := string(debug.Stack())
+			fmt.Println(stack)
+		}
+        err = errors.New("Panic extracting circuit to Lean")
+    }
+    return nil
+}
 
 // arrayToSlice returns a slice of elements identical to
 // the input array `v`
@@ -177,8 +195,8 @@ func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
 	case nil:
 		return []frontend.Variable{}
 	default:
-		fmt.Printf("invalid argument of type %T %#v\n", gOutputs, gOutputs)
-		panic("invalid argument")
+		fmt.Printf("replaceArg invalid argument of type %T %#v\n", gOutputs, gOutputs)
+		panic("replaceArg invalid argument")
 	}
 }
 
@@ -217,7 +235,7 @@ func generateUniqueName(element any, args []ExArg) string {
 		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 			suffix += fmt.Sprintf("_%d", val.Field(i).Uint())
 		case reflect.Uintptr, reflect.Float32, reflect.Float64, reflect.Complex64, reflect.Complex128:
-			fmt.Printf("-- Gadget name doesn't differentiate yet between different initialised values of type %+v.\n", val.Field(i).Kind())
+			fmt.Printf("-- Gadget name doesn't differentiate yet between different values of type %+v.\n", val.Field(i).Kind())
 			fmt.Println("-- Proceed with caution")
 		}
 	}

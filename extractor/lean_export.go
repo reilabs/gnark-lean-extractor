@@ -98,7 +98,7 @@ func exportCircuit(circuit ExCircuit, name string) string {
 
 // circuitInit takes struct and a schema to populate all the
 // circuit/gagdget fields with Operand.
-func circuitInit(class any, schema *schema.Schema) error {
+func circuitInit(class any, schema *schema.Schema) {
 	// https://stackoverflow.com/a/49704408
 	// https://stackoverflow.com/a/14162161
 	// https://stackoverflow.com/a/63422049
@@ -143,7 +143,6 @@ func circuitInit(class any, schema *schema.Schema) error {
 			fmt.Printf("Skipped type %s\n", field_type.Kind())
 		}
 	}
-	return nil
 }
 
 func circuitArgs(field schema.Field) ExArgType {
@@ -470,6 +469,8 @@ func checkVector(operand ProjArray, argIdx int) (bool, Operand) {
 	return true, operand.Projs[0].(Proj).Operand
 }
 
+// getStack returns the dimension of each of the nested ProjArray.Projs in `operand`.
+// Outermost dimension is at index 0
 func getStack(operand ProjArray) []int {
 	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}) {
 		return getStack(operand.Projs[0].(ProjArray))
@@ -485,6 +486,8 @@ func getStack(operand ProjArray) []int {
 	}
 }
 
+// expectedOperand checks that `op` has the Operand of `argIndex`
+// and the last element of `indices` matches `op.Index`
 func expectedOperand(op Proj, argIndex Operand, indices []int) bool {
 	if op.Index != indices[len(indices)-1] {
 		return false
@@ -495,6 +498,8 @@ func expectedOperand(op Proj, argIndex Operand, indices []int) bool {
 	return op.Operand == argIndex
 }
 
+// checkDimensions checks that the list of Proj is from the same Operand, with increasing Index,
+// with the first Index being 0 and with the number of elemetns in ProjArray.Projs matching length[0]
 func checkDimensions(operand ProjArray, length []int, argIndex Operand, pastIndices ...int) bool {
 	if len(operand.Projs) != length[0] {
 		return false
@@ -532,13 +537,25 @@ func getIndex(operand Operand) Operand {
 	return getIndex(operand.(Proj).Operand)
 }
 
+// isVectorComplete determines if `operand` can be optimised
+// without recreating the Vector element by element. The
+// Operand returned is the simplified operand for parsing
+// by `operandExpr`
 func isVectorComplete(operand ProjArray) (bool, Operand) {
 	if len(operand.Projs) == 0 {
 		return false, operand
 	}
 
+	// To check that ProjArray{} is complete, we first collect the Size
+	// parameter from index 0 of the Projs list. Then we retrieve the first
+	// Operand in ProjArray and extract the Input or Gate to use it in
+	// `checkDimensions` to verify that it's the same across all the
+	// elements. `checkDimensions` iterates through all the elements
+	// in `operand` to verify that `Operand` in `Proj` are all from the
+	// same Input/Gate, with Index starting from 0 and in ascending order
+	// and the length of Operand matches Proj.Size.
 	if reflect.TypeOf(operand.Projs[0]) == reflect.TypeOf(ProjArray{}) {
-		sliceDimensions := getStack(operand) // Outermost dimension is at index 0
+		sliceDimensions := getStack(operand)
 		if len(sliceDimensions) == 0 {
 			return false, operand
 		}
@@ -550,6 +567,8 @@ func isVectorComplete(operand ProjArray) (bool, Operand) {
 		return true, argIdx
 	}
 
+	// checkVector is used for Proj and it does the same checks
+	// as for ProjArray
 	argIdx := getArgIndex(operand)
 	if argIdx == -1 {
 		return false, operand
