@@ -474,4 +474,4 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	return &exGadget
 }
 
-var _ abstractor.API = &CodeExtractor{}
+var _ frontend.API = &CodeExtractor{}

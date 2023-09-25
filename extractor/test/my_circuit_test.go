@@ -6,7 +6,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
-	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -17,14 +16,10 @@ type MyCircuit struct {
 	Out  frontend.Variable
 }
 
-func (circuit *MyCircuit) AbsDefine(api abstractor.API) error {
+func (circuit *MyCircuit) Define(api frontend.API) error {
 	sum := api.Add(circuit.In_1, circuit.In_2)
 	api.AssertIsEqual(sum, circuit.Out)
 	return nil
-}
-
-func (circuit MyCircuit) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestMyCircuit(t *testing.T) {

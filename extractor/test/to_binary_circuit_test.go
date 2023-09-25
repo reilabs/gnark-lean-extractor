@@ -6,7 +6,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
-	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -15,7 +14,7 @@ type OptimisedVectorGadget struct {
 	In frontend.Variable
 }
 
-func (gadget OptimisedVectorGadget) DefineGadget(api abstractor.API) interface{} {
+func (gadget OptimisedVectorGadget) DefineGadget(api frontend.API) interface{} {
 	return api.ToBinary(gadget.In, 3)
 }
 
@@ -26,7 +25,7 @@ type VectorGadget struct {
 	Nested [][]frontend.Variable
 }
 
-func (gadget VectorGadget) DefineGadget(api abstractor.API) interface{} {
+func (gadget VectorGadget) DefineGadget(api frontend.API) interface{} {
 	var sum frontend.Variable
 	for i := 0; i < len(gadget.In_1); i++ {
 		sum = api.Mul(gadget.In_1[i], gadget.In_2[i])
@@ -40,7 +39,7 @@ type ToBinaryCircuit struct {
 	Double [][]frontend.Variable `gnark:",public"`
 }
 
-func (circuit *ToBinaryCircuit) AbsDefine(api abstractor.API) error {
+func (circuit *ToBinaryCircuit) Define(api frontend.API) error {
 	bin := api.ToBinary(circuit.In, 3)
 	bout := api.ToBinary(circuit.Out, 3)
 
@@ -50,10 +49,6 @@ func (circuit *ToBinaryCircuit) AbsDefine(api abstractor.API) error {
 	api.Mul(d[2], d[1])
 
 	return nil
-}
-
-func (circuit ToBinaryCircuit) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestGadgetExtraction(t *testing.T) {

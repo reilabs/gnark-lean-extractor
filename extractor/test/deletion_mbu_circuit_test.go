@@ -6,7 +6,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
-	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -21,7 +20,7 @@ type DeletionProof struct {
 	Depth     int
 }
 
-func (gadget DeletionProof) DefineGadget(api abstractor.API) interface{} {
+func (gadget DeletionProof) DefineGadget(api frontend.API) interface{} {
 	return gadget.PreRoot
 }
 
@@ -42,7 +41,7 @@ type DeletionMbuCircuit struct {
 	Depth     int
 }
 
-func (circuit *DeletionMbuCircuit) AbsDefine(api abstractor.API) error {
+func (circuit *DeletionMbuCircuit) Define(api frontend.API) error {
 	root := extractor.Call(api, DeletionProof{
 		DeletionIndices: circuit.DeletionIndices,
 		PreRoot:         circuit.PreRoot,
@@ -56,10 +55,6 @@ func (circuit *DeletionMbuCircuit) AbsDefine(api abstractor.API) error {
 	api.AssertIsEqual(root, circuit.PostRoot)
 
 	return nil
-}
-
-func (circuit DeletionMbuCircuit) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestDeletionMbuCircuit(t *testing.T) {

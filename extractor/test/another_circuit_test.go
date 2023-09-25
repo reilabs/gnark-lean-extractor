@@ -6,7 +6,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
-	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -17,7 +16,7 @@ type IntArrayGadget struct {
 	NestedMatrix [2][2]int
 }
 
-func (gadget IntArrayGadget) DefineGadget(api abstractor.API) interface{} {
+func (gadget IntArrayGadget) DefineGadget(api frontend.API) interface{} {
 	r := api.FromBinary(gadget.In...)
 	api.Mul(gadget.Matrix[0], gadget.Matrix[1])
 	return []frontend.Variable{r, r, r}
@@ -28,7 +27,7 @@ type AnotherCircuit struct {
 	Matrix [2][2]int
 }
 
-func (circuit *AnotherCircuit) AbsDefine(api abstractor.API) error {
+func (circuit *AnotherCircuit) Define(api frontend.API) error {
 	r := extractor.Call1(api, IntArrayGadget{
 		circuit.In,
 		circuit.Matrix[0],
@@ -39,10 +38,6 @@ func (circuit *AnotherCircuit) AbsDefine(api abstractor.API) error {
 	api.FromBinary(r[0:2]...)
 	api.FromBinary(r...)
 	return nil
-}
-
-func (circuit AnotherCircuit) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestAnotherCircuit(t *testing.T) {

@@ -6,7 +6,6 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
-	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 	"github.com/stretchr/testify/assert"
 )
@@ -17,7 +16,7 @@ type ReturnItself struct {
 	Out  []frontend.Variable
 }
 
-func (gadget ReturnItself) DefineGadget(api abstractor.API) interface{} {
+func (gadget ReturnItself) DefineGadget(api frontend.API) interface{} {
 	for i := 0; i < len(gadget.In_1); i++ {
 		gadget.Out[i] = api.Mul(gadget.In_1[i], gadget.In_1[i])
 	}
@@ -30,7 +29,7 @@ type SliceGadget struct {
 	In_2 []frontend.Variable
 }
 
-func (gadget SliceGadget) DefineGadget(api abstractor.API) interface{} {
+func (gadget SliceGadget) DefineGadget(api frontend.API) interface{} {
 	for i := 0; i < len(gadget.In_1); i++ {
 		api.Mul(gadget.In_1[i], gadget.In_2[i])
 	}
@@ -46,7 +45,7 @@ type CircuitWithParameter struct {
 	Param int
 }
 
-func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
+func (circuit *CircuitWithParameter) Define(api frontend.API) error {
 	D := make([]frontend.Variable, 3)
 	for i := 0; i < len(circuit.Path); i++ {
 		D = extractor.Call1(api, ReturnItself{
@@ -73,10 +72,6 @@ func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
 	api.AssertIsEqual(circuit.Param, circuit.In)
 
 	return nil
-}
-
-func (circuit CircuitWithParameter) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestCircuitWithParameter(t *testing.T) {
