@@ -6,6 +6,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
+	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -32,7 +33,7 @@ type MySecondWidget struct {
 
 func (gadget MySecondWidget) DefineGadget(api frontend.API) interface{} {
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
-	snd := extractor.Call(api, MyWidget{gadget.Test_1, gadget.Test_2, uint32(gadget.Num)})
+	snd := abstractor.Call(api, MyWidget{gadget.Test_1, gadget.Test_2, uint32(gadget.Num)})
 	api.Mul(mul, snd)
 	return nil
 }
@@ -46,7 +47,7 @@ type TwoGadgets struct {
 func (circuit *TwoGadgets) Define(api frontend.API) error {
 	sum := api.Add(circuit.In_1, circuit.In_2)
 	prod := api.Mul(circuit.In_1, circuit.In_2)
-	extractor.CallVoid(api, MySecondWidget{sum, prod, circuit.Num})
+	abstractor.CallVoid(api, MySecondWidget{sum, prod, circuit.Num})
 	return nil
 }
 

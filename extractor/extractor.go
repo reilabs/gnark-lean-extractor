@@ -5,12 +5,11 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
-
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
+	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 )
 
 type Operand interface {
@@ -474,4 +473,4 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	return &exGadget
 }
 
-var _ frontend.API = &CodeExtractor{}
+var _ abstractor.API = &CodeExtractor{}

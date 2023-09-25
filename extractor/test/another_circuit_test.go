@@ -6,6 +6,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
+	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -28,7 +29,7 @@ type AnotherCircuit struct {
 }
 
 func (circuit *AnotherCircuit) Define(api frontend.API) error {
-	r := extractor.Call1(api, IntArrayGadget{
+	r := abstractor.Call1(api, IntArrayGadget{
 		circuit.In,
 		circuit.Matrix[0],
 		circuit.Matrix,

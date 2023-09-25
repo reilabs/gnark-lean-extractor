@@ -9,3 +9,8 @@ type Gadget interface {
 type GadgetDefinition interface {
 	DefineGadget(api frontend.API) interface{}
 }
+
+type API interface {
+	frontend.API
+	Call(gadget GadgetDefinition) interface{}
+}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
+	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -45,7 +46,7 @@ func (circuit *ToBinaryCircuit) Define(api frontend.API) error {
 
 	api.Add(circuit.Double[2][2], circuit.Double[1][1], circuit.Double[0][0])
 	api.Mul(bin[1], bout[1])
-	d := extractor.Call1(api, VectorGadget{circuit.Double[2][:], circuit.Double[0][:], circuit.Double})
+	d := abstractor.Call1(api, VectorGadget{circuit.Double[2][:], circuit.Double[0][:], circuit.Double})
 	api.Mul(d[2], d[1])
 
 	return nil

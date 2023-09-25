@@ -6,6 +6,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
+	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -30,8 +31,8 @@ type MerkleRecover struct {
 func (circuit *MerkleRecover) Define(api frontend.API) error {
 	current := circuit.Element
 	for i := 0; i < len(circuit.Path); i++ {
-		leftHash := extractor.Call(api, DummyHash{current, circuit.Proof[i]})
-		rightHash := extractor.Call(api, DummyHash{circuit.Proof[i], current})
+		leftHash := abstractor.Call(api, DummyHash{current, circuit.Proof[i]})
+		rightHash := abstractor.Call(api, DummyHash{circuit.Proof[i], current})
 		current = api.Select(circuit.Path[i], rightHash, leftHash)
 	}
 	api.AssertIsEqual(current, circuit.Root)

@@ -6,6 +6,7 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
+	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
 )
 
@@ -43,32 +44,32 @@ type SlicesOptimisation struct {
 }
 
 func (circuit *SlicesOptimisation) Define(api frontend.API) error {
-	extractor.Call1(api, SlicesGadget{
+	abstractor.Call1(api, SlicesGadget{
 		TwoDim:   circuit.TwoDim,
 		ThreeDim: circuit.ThreeDim,
 	})
-	extractor.Call1(api, SlicesGadget{
+	abstractor.Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{circuit.TwoDim[1], circuit.TwoDim[0]},
 		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0]},
 	})
-	extractor.Call1(api, SlicesGadget{
+	abstractor.Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{{circuit.TwoDim[1][1]}, {circuit.TwoDim[1][0]}},
 		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0], circuit.ThreeDim[1]},
 	})
-	extractor.Call1(api, SlicesGadget{
+	abstractor.Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{circuit.TwoDim[1], {circuit.TwoDim[1][0], circuit.TwoDim[0][0], circuit.TwoDim[1][1]}},
 		ThreeDim: circuit.ThreeDim,
 	})
-	extractor.Call2(api, TwoSlices{
+	abstractor.Call2(api, TwoSlices{
 		TwoDim: circuit.TwoDim,
 	})
-	a := extractor.Call3(api, ThreeSlices{
+	a := abstractor.Call3(api, ThreeSlices{
 		ThreeDim: circuit.ThreeDim,
 	})
-	b := extractor.Call3(api, ThreeSlices{
+	b := abstractor.Call3(api, ThreeSlices{
 		ThreeDim: a,
 	})
-	extractor.Call3(api, ThreeSlices{
+	abstractor.Call3(api, ThreeSlices{
 		ThreeDim: b,
 	})
 
