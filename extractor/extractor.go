@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
-	"strings"
 
 	"github.com/reilabs/gnark-lean-extractor/abstractor"
 
@@ -24,6 +23,16 @@ type Const struct {
 
 func (_ Const) isOperand() {}
 
+// Integer struct is used to distinguish between a constant in
+// place of a frontend.Variable and an integer where an integer
+// is the only type allowed. Integer sruct is currently only
+// used for the length of the result in ToBinary function.
+type Integer struct {
+	Value *big.Int
+}
+
+func (_ Integer) isOperand() {}
+
 type Gate struct {
 	Index int
 }
@@ -40,15 +49,20 @@ func (_ Input) isOperand() {}
 
 // Index is the index to be accessed in the array
 // Operand[Index]
+// Size is a placeholder to keep track of the whole
+// array size. It is essential to know if the whole
+// vector or only a slice is used as function
+// argument.
 type Proj struct {
 	Operand Operand
 	Index   int
+	Size    int
 }
 
 func (_ Proj) isOperand() {}
 
 type ProjArray struct {
-	Proj []Operand
+	Projs []Operand
 }
 
 func (_ ProjArray) isOperand() {}
@@ -95,68 +109,57 @@ type Code struct {
 }
 
 type ExGadget struct {
-	Name      string
-	Arity     int
-	Code      []App
-	Outputs   []Operand
-	Extractor *CodeExtractor
-	Fields    []schema.Field
-	Args      []ExArg
+	Name        string
+	Arity       int
+	Code        []App
+	OutputsFlat []Operand
+	Outputs     interface{}
+	Extractor   *CodeExtractor
+	Fields      []schema.Field
+	Args        []ExArg
 }
 
 func (g *ExGadget) isOp() {}
 
-func ArrayToSlice(v reflect.Value) []frontend.Variable {
-	res := make([]frontend.Variable, v.Len())
-
-	for i := 0; i < v.Len(); i++ {
-		res[i] = v.Index(i).Elem().Interface().(frontend.Variable)
-	}
-
-	return res
-}
-
-func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
+func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) interface{} {
 	args := []frontend.Variable{}
 
 	rv := reflect.Indirect(reflect.ValueOf(gadget))
 	rt := rv.Type()
+	// Looping through the circuit fields only.
 	for i := 0; i < rt.NumField(); i++ {
 		fld := rt.Field(i)
 		v := rv.FieldByName(fld.Name)
 		switch v.Kind() {
 		case reflect.Slice:
-			args = append(args, v.Interface().([]frontend.Variable))
+			arg := flattenSlice(v)
+			if len(arg) != 0 {
+				args = append(args, arg)
+			}
 		case reflect.Array:
 			// I can't convert from array to slice using Reflect because
-			// the field is unaddressable.
-			args = append(args, ArrayToSlice(v))
+			// the field is unaddressable. Therefore I recreate a slice
+			// with the same elements as the input array.
+			arg := arrayToSlice(v)
+			// Checking length != 0 because I need to keep nested slices
+			// as nested slices, but not empty slices
+			if len(arg) != 0 {
+				args = append(args, arg)
+			}
 		case reflect.Interface:
 			args = append(args, v.Elem().Interface().(frontend.Variable))
 		}
 	}
-
 	gate := g.Extractor.AddApp(g, args...)
-	outs := make([]frontend.Variable, len(g.Outputs))
-	if len(g.Outputs) == 1 {
-		outs[0] = gate
-	} else {
-		for i := range g.Outputs {
-			outs[i] = Proj{gate, i}
-		}
-	}
-	return outs
+
+	res := replaceArg(g.Outputs, gate)
+	return res
 }
 
-func cloneGadget(gadget abstractor.GadgetDefinition) abstractor.GadgetDefinition {
-	v := reflect.ValueOf(gadget)
-	tmp_gadget := reflect.New(v.Type())
-	tmp_gadget.Elem().Set(v)
-	return tmp_gadget.Interface().(abstractor.GadgetDefinition)
-}
-
-func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) []frontend.Variable {
-	// Copying `gadget` because `DefineGadget` needs to manipulate the input
+func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) interface{} {
+	// Deep copying `gadget` because `DefineGadget` needs to modify the gadget fields.
+	// This was done as a replacement to the initial method of declaring gadgets using
+	// a direct call to `Define Gadget` within the circuit and then calling GadgetDefinition.Call
 	clonedGadget := cloneGadget(gadget)
 	g := ce.DefineGadget(clonedGadget)
 	return g.Call(gadget)
@@ -178,13 +181,12 @@ type ExCircuit struct {
 	Gadgets []ExGadget
 	Code    []App
 	Field   ecc.ID
-	Name    string
 }
 
 type CodeExtractor struct {
 	Code    []App
 	Gadgets []ExGadget
-	Field   ecc.ID
+	FieldID ecc.ID
 }
 
 func sanitizeVars(args ...frontend.Variable) []Operand {
@@ -193,17 +195,41 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		switch arg.(type) {
 		case Input, Gate, Proj, Const:
 			ops = append(ops, arg.(Operand))
+		case Integer:
+			ops = append(ops, arg.(Operand))
 		case int:
-			ops = append(ops, Const{big.NewInt(int64(arg.(int)))})
+			ops = append(ops, Const{new(big.Int).SetInt64(int64(arg.(int)))})
+		case int8:
+			ops = append(ops, Const{new(big.Int).SetInt64(int64(arg.(int8)))})
+		case int16:
+			ops = append(ops, Const{new(big.Int).SetInt64(int64(arg.(int16)))})
+		case int32:
+			ops = append(ops, Const{new(big.Int).SetInt64(int64(arg.(int32)))})
+		case int64:
+			ops = append(ops, Const{new(big.Int).SetInt64(arg.(int64))})
+		case uint:
+			ops = append(ops, Const{new(big.Int).SetUint64(uint64(arg.(uint)))})
+		case uint8:
+			ops = append(ops, Const{new(big.Int).SetUint64(uint64(arg.(uint8)))})
+		case uint16:
+			ops = append(ops, Const{new(big.Int).SetUint64(uint64(arg.(uint16)))})
+		case uint32:
+			ops = append(ops, Const{new(big.Int).SetUint64(uint64(arg.(uint32)))})
+		case uint64:
+			ops = append(ops, Const{new(big.Int).SetUint64(arg.(uint64))})
 		case big.Int:
 			casted := arg.(big.Int)
 			ops = append(ops, Const{&casted})
 		case []frontend.Variable:
 			opsArray := sanitizeVars(arg.([]frontend.Variable)...)
 			ops = append(ops, ProjArray{opsArray})
+		case nil:
+			// This takes care of uninitialised fields that are
+			// passed to gadgets
+			ops = append(ops, Const{big.NewInt(int64(0))})
 		default:
-			fmt.Printf("invalid argument of type %T\n%#v\n", arg, arg)
-			panic("invalid argument")
+			fmt.Printf("sanitizeVars invalid argument of type %T\n%#v\n", arg, arg)
+			panic("sanitizeVars invalid argument")
 		}
 	}
 	return ops
@@ -248,7 +274,7 @@ func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 }
 
 func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
-	nbBits := ce.Field.ScalarField().BitLen()
+	nbBits := ce.FieldID.ScalarField().BitLen()
 	if len(n) == 1 {
 		nbBits = n[0]
 		if nbBits < 0 {
@@ -256,16 +282,22 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 		}
 	}
 
-	gate := ce.AddApp(OpToBinary, i1, nbBits)
+	gate := ce.AddApp(OpToBinary, i1, Integer{big.NewInt(int64(nbBits))})
 	outs := make([]frontend.Variable, nbBits)
 	for i := range outs {
-		outs[i] = Proj{gate, i}
+		outs[i] = Proj{gate, i, len(outs)}
 	}
 	return outs
 }
 
 func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
 	// Packs in little-endian
+	if len(b) == 0 {
+		panic("FromBinary has to have at least one argument!")
+	}
+	if reflect.TypeOf(b[0]) == reflect.TypeOf([]frontend.Variable{}) {
+		panic("Pass operators to FromBinary using ellipsis")
+	}
 	return ce.AddApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
 }
 
@@ -318,6 +350,27 @@ func (ce *CodeExtractor) Println(a ...frontend.Variable) {
 }
 
 func (ce *CodeExtractor) Compiler() frontend.Compiler {
+	return ce
+}
+
+func (ce *CodeExtractor) MarkBoolean(v frontend.Variable) {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) IsBoolean(v frontend.Variable) bool {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) Field() *big.Int {
+	scalarField := ce.FieldID.ScalarField()
+	return new(big.Int).Set(scalarField)
+}
+
+func (ce *CodeExtractor) FieldBitLen() int {
+	return ce.FieldID.ScalarField().BitLen()
+}
+
+func (ce *CodeExtractor) Commit(...frontend.Variable) (frontend.Variable, error) {
 	panic("implement me")
 }
 
@@ -330,14 +383,34 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	case Const:
 		return v.(Const).Value, true
 	case Proj:
-		switch v.(Proj).Operand.(type) {
-		case Const:
-			return v.(Proj).Operand.(Const).Value, true
-		default:
-			return nil, false
+		{
+			switch v.(Proj).Operand.(type) {
+			case Const:
+				return v.(Proj).Operand.(Const).Value, true
+			default:
+				return nil, false
+			}
 		}
+	case int:
+		return new(big.Int).SetInt64(int64(v.(int))), true
+	case int8:
+		return new(big.Int).SetInt64(int64(v.(int8))), true
+	case int16:
+		return new(big.Int).SetInt64(int64(v.(int16))), true
+	case int32:
+		return new(big.Int).SetInt64(int64(v.(int32))), true
 	case int64:
-		return big.NewInt(v.(int64)), true
+		return new(big.Int).SetInt64(v.(int64)), true
+	case uint:
+		return new(big.Int).SetUint64(uint64(v.(uint))), true
+	case uint8:
+		return new(big.Int).SetUint64(uint64(v.(uint8))), true
+	case uint16:
+		return new(big.Int).SetUint64(uint64(v.(uint16))), true
+	case uint32:
+		return new(big.Int).SetUint64(uint64(v.(uint32))), true
+	case uint64:
+		return new(big.Int).SetUint64(v.(uint64)), true
 	case big.Int:
 		casted := v.(big.Int)
 		return &casted, true
@@ -346,46 +419,19 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
-func getGadgetByName(gadgets []ExGadget, name string) abstractor.Gadget {
-	for _, gadget := range gadgets {
-		if gadget.Name == name {
-			return &gadget
-		}
-	}
-	return nil
-}
-
-func getSize(elem ExArgType) []string {
-	if elem.Type == nil {
-		return []string{fmt.Sprintf("%d", elem.Size)}
-	}
-	return append(getSize(*elem.Type), fmt.Sprintf("%d", elem.Size))
-}
-
 func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
 		panic("DefineGadget only takes pointers to the gadget")
 	}
-	schema, _ := GetSchema(gadget)
-	CircuitInit(gadget, schema)
+	schema, _ := getSchema(gadget)
+	circuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
 	// for arity because each array element is considered
 	// a parameter
 	arity := len(schema.Fields)
-	args := GetExArgs(gadget, schema.Fields)
+	args := getExArgs(gadget, schema.Fields)
 
-	// To distinguish between gadgets instantiated with different array
-	// sizes, add a suffix to the name. The suffix of each instantiation
-	// is made up of the concatenation of the length of all the array
-	// fields in the gadget
-	suffix := ""
-	for _, a := range args {
-		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
-			suffix += "_"
-			suffix += strings.Join(getSize(a.Type), "_")
-		}
-	}
-	name := fmt.Sprintf("%s%s", reflect.TypeOf(gadget).Elem().Name(), suffix)
+	name := generateUniqueName(gadget, args)
 
 	ptr_gadget := getGadgetByName(ce.Gadgets, name)
 	if ptr_gadget != nil {
@@ -395,16 +441,34 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	oldCode := ce.Code
 	ce.Code = make([]App, 0)
 	outputs := gadget.DefineGadget(ce)
+
+	// Handle gadgets returning nil.
+	// Without the if-statement, the nil would be replaced with (0:F)
+	// due to the case in sanitizeVars
+	if outputs == nil {
+		outputs = []frontend.Variable{}
+	}
+
+	// flattenSlice needs to be called only if there are nested
+	// slices in order to generate a slice of Operand.
+	// TODO: remove `OutputsFlat` field and use only `Outputs`
+	flatOutput := []frontend.Variable{outputs}
+	vOutputs := reflect.ValueOf(outputs)
+	if vOutputs.Kind() == reflect.Slice {
+		flatOutput = flattenSlice(vOutputs)
+	}
+
 	newCode := ce.Code
 	ce.Code = oldCode
 	exGadget := ExGadget{
-		Name:      name,
-		Arity:     arity,
-		Code:      newCode,
-		Outputs:   sanitizeVars(outputs...),
-		Extractor: ce,
-		Fields:    schema.Fields,
-		Args:      args,
+		Name:        name,
+		Arity:       arity,
+		Code:        newCode,
+		OutputsFlat: sanitizeVars(flatOutput...),
+		Outputs:     outputs,
+		Extractor:   ce,
+		Fields:      schema.Fields,
+		Args:        args,
 	}
 	ce.Gadgets = append(ce.Gadgets, exGadget)
 	return &exGadget
