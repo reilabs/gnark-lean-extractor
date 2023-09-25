@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/reilabs/gnark-lean-extractor/abstractor"
+	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/hint"

@@ -1,4 +1,4 @@
-module github.com/reilabs/gnark-lean-extractor
+module github.com/reilabs/gnark-lean-extractor/v2
 
 go 1.20
 
