@@ -1,8 +1,4 @@
-// This file contains the public API for using the extractor.
-// The Call functions are used to call gadgets and get their returnd object.
-// These methods are prepared for doing automated casting from interface{}.
-// Alternatively it's possible to do manual casting by calling
-// abstractor.API.Call() and casting the result to the needed type.
+// This file contains the public API for running the extractor.
 package extractor
 
 import (
@@ -15,38 +11,11 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-// CallVoid is used to call a Gadget which doesn't return anything
-func CallVoid(api abstractor.API, gadget abstractor.GadgetDefinition) {
-	api.Call(gadget)
-}
-
-// Call is used to call a Gadget which returns frontend.Variable (i.e. a single element `F` in Lean)
-func Call(api abstractor.API, gadget abstractor.GadgetDefinition) frontend.Variable {
-	return api.Call(gadget).(frontend.Variable)
-}
-
-// Call1 is used to call a Gadget which returns []frontend.Variable (i.e. `Vector F d` in Lean)
-func Call1(api abstractor.API, gadget abstractor.GadgetDefinition) []frontend.Variable {
-	return api.Call(gadget).([]frontend.Variable)
-}
-
-// Call2 is used to call a Gadget which returns a [][]frontend.Variable
-// (i.e. `Vector (Vector F a) b` in Lean)
-func Call2(api abstractor.API, gadget abstractor.GadgetDefinition) [][]frontend.Variable {
-	return api.Call(gadget).([][]frontend.Variable)
-}
-
-// Call3 is used to call a Gadget which returns a [][][]frontend.Variable
-// (i.e. `Vector (Vector (Vector F a) b) c` in Lean)
-func Call3(api abstractor.API, gadget abstractor.GadgetDefinition) [][][]frontend.Variable {
-	return api.Call(gadget).([][][]frontend.Variable)
-}
-
 // CircuitToLeanWithName exports a `circuit` to Lean over a `field` with `namespace`
 // CircuitToLeanWithName and CircuitToLean aren't joined in a single function
 // CircuitToLean(circuit abstractor.Circuit, field ecc.ID, namespace ...string) because the long term view
 // is to add an optional parameter to support custom `set_option` directives in the header.
-func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace string) (out string, err error) {
+func CircuitToLeanWithName(circuit frontend.Circuit, field ecc.ID, namespace string) (out string, err error) {
 	defer recoverError()
 
 	schema, err := getSchema(circuit)
@@ -62,7 +31,7 @@ func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace s
 		FieldID: field,
 	}
 
-	err = circuit.AbsDefine(&api)
+	err = circuit.Define(&api)
 	if err != nil {
 		return "", err
 	}
@@ -80,7 +49,7 @@ func CircuitToLeanWithName(circuit abstractor.Circuit, field ecc.ID, namespace s
 // CircuitToLean exports a `circuit` to Lean over a `field` with the namespace being the
 // struct name of `circuit`
 // When the namespace argument is not defined, it uses the name of the struct circuit
-func CircuitToLean(circuit abstractor.Circuit, field ecc.ID) (string, error) {
+func CircuitToLean(circuit frontend.Circuit, field ecc.ID) (string, error) {
 	name := getStructName(circuit)
 	return CircuitToLeanWithName(circuit, field, name)
 }
@@ -110,7 +79,7 @@ func GadgetToLean(gadget abstractor.GadgetDefinition, field ecc.ID) (string, err
 }
 
 // ExtractCircuits is used to export a series of `circuits` to Lean over a `field` under `namespace`.
-func ExtractCircuits(namespace string, field ecc.ID, circuits ...abstractor.Circuit) (out string, err error) {
+func ExtractCircuits(namespace string, field ecc.ID, circuits ...frontend.Circuit) (out string, err error) {
 	defer recoverError()
 
 	api := CodeExtractor{
@@ -142,7 +111,7 @@ func ExtractCircuits(namespace string, field ecc.ID, circuits ...abstractor.Circ
 		past_circuits = append(past_circuits, name)
 
 		circuitInit(circuit, schema)
-		err = circuit.AbsDefine(&api)
+		err = circuit.Define(&api)
 		if err != nil {
 			return "", err
 		}

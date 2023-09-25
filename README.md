@@ -34,7 +34,7 @@ type MyCircuit struct {
     Out  frontend.Variable
 }
 
-func (circuit *MyCircuit) AbsDefine(api abstractor.API) error {
+func (circuit *MyCircuit) Define(api abstractor.API) error {
     sum := api.Add(circuit.In_1, circuit.In_2)
     api.AssertIsEqual(sum, circuit.Out)
     return nil

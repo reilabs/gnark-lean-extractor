@@ -15,7 +15,7 @@ type OptimisedVectorGadget struct {
 	In frontend.Variable
 }
 
-func (gadget OptimisedVectorGadget) DefineGadget(api abstractor.API) interface{} {
+func (gadget OptimisedVectorGadget) DefineGadget(api frontend.API) interface{} {
 	return api.ToBinary(gadget.In, 3)
 }
 
@@ -26,7 +26,7 @@ type VectorGadget struct {
 	Nested [][]frontend.Variable
 }
 
-func (gadget VectorGadget) DefineGadget(api abstractor.API) interface{} {
+func (gadget VectorGadget) DefineGadget(api frontend.API) interface{} {
 	var sum frontend.Variable
 	for i := 0; i < len(gadget.In_1); i++ {
 		sum = api.Mul(gadget.In_1[i], gadget.In_2[i])
@@ -40,20 +40,16 @@ type ToBinaryCircuit struct {
 	Double [][]frontend.Variable `gnark:",public"`
 }
 
-func (circuit *ToBinaryCircuit) AbsDefine(api abstractor.API) error {
+func (circuit *ToBinaryCircuit) Define(api frontend.API) error {
 	bin := api.ToBinary(circuit.In, 3)
 	bout := api.ToBinary(circuit.Out, 3)
 
 	api.Add(circuit.Double[2][2], circuit.Double[1][1], circuit.Double[0][0])
 	api.Mul(bin[1], bout[1])
-	d := extractor.Call1(api, VectorGadget{circuit.Double[2][:], circuit.Double[0][:], circuit.Double})
+	d := abstractor.Call1(api, VectorGadget{circuit.Double[2][:], circuit.Double[0][:], circuit.Double})
 	api.Mul(d[2], d[1])
 
 	return nil
-}
-
-func (circuit ToBinaryCircuit) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestGadgetExtraction(t *testing.T) {

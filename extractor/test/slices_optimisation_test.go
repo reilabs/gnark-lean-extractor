@@ -15,7 +15,7 @@ type TwoSlices struct {
 	TwoDim [][]frontend.Variable
 }
 
-func (gadget TwoSlices) DefineGadget(api abstractor.API) interface{} {
+func (gadget TwoSlices) DefineGadget(api frontend.API) interface{} {
 	return gadget.TwoDim
 }
 
@@ -23,7 +23,7 @@ type ThreeSlices struct {
 	ThreeDim [][][]frontend.Variable
 }
 
-func (gadget ThreeSlices) DefineGadget(api abstractor.API) interface{} {
+func (gadget ThreeSlices) DefineGadget(api frontend.API) interface{} {
 	return gadget.ThreeDim
 }
 
@@ -32,7 +32,7 @@ type SlicesGadget struct {
 	ThreeDim [][][]frontend.Variable
 }
 
-func (gadget SlicesGadget) DefineGadget(api abstractor.API) interface{} {
+func (gadget SlicesGadget) DefineGadget(api frontend.API) interface{} {
 	return append(gadget.ThreeDim[0][0], gadget.TwoDim[0]...)
 }
 
@@ -43,41 +43,37 @@ type SlicesOptimisation struct {
 	ThreeDim [][][]frontend.Variable
 }
 
-func (circuit *SlicesOptimisation) AbsDefine(api abstractor.API) error {
-	extractor.Call1(api, SlicesGadget{
+func (circuit *SlicesOptimisation) Define(api frontend.API) error {
+	abstractor.Call1(api, SlicesGadget{
 		TwoDim:   circuit.TwoDim,
 		ThreeDim: circuit.ThreeDim,
 	})
-	extractor.Call1(api, SlicesGadget{
+	abstractor.Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{circuit.TwoDim[1], circuit.TwoDim[0]},
 		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0]},
 	})
-	extractor.Call1(api, SlicesGadget{
+	abstractor.Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{{circuit.TwoDim[1][1]}, {circuit.TwoDim[1][0]}},
 		ThreeDim: [][][]frontend.Variable{circuit.ThreeDim[1], circuit.ThreeDim[0], circuit.ThreeDim[1]},
 	})
-	extractor.Call1(api, SlicesGadget{
+	abstractor.Call1(api, SlicesGadget{
 		TwoDim:   [][]frontend.Variable{circuit.TwoDim[1], {circuit.TwoDim[1][0], circuit.TwoDim[0][0], circuit.TwoDim[1][1]}},
 		ThreeDim: circuit.ThreeDim,
 	})
-	extractor.Call2(api, TwoSlices{
+	abstractor.Call2(api, TwoSlices{
 		TwoDim: circuit.TwoDim,
 	})
-	a := extractor.Call3(api, ThreeSlices{
+	a := abstractor.Call3(api, ThreeSlices{
 		ThreeDim: circuit.ThreeDim,
 	})
-	b := extractor.Call3(api, ThreeSlices{
+	b := abstractor.Call3(api, ThreeSlices{
 		ThreeDim: a,
 	})
-	extractor.Call3(api, ThreeSlices{
+	abstractor.Call3(api, ThreeSlices{
 		ThreeDim: b,
 	})
 
 	return nil
-}
-
-func (circuit SlicesOptimisation) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestSlicesOptimisation(t *testing.T) {

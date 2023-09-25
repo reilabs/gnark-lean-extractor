@@ -17,7 +17,7 @@ type ReturnItself struct {
 	Out  []frontend.Variable
 }
 
-func (gadget ReturnItself) DefineGadget(api abstractor.API) interface{} {
+func (gadget ReturnItself) DefineGadget(api frontend.API) interface{} {
 	for i := 0; i < len(gadget.In_1); i++ {
 		gadget.Out[i] = api.Mul(gadget.In_1[i], gadget.In_1[i])
 	}
@@ -30,7 +30,7 @@ type SliceGadget struct {
 	In_2 []frontend.Variable
 }
 
-func (gadget SliceGadget) DefineGadget(api abstractor.API) interface{} {
+func (gadget SliceGadget) DefineGadget(api frontend.API) interface{} {
 	for i := 0; i < len(gadget.In_1); i++ {
 		api.Mul(gadget.In_1[i], gadget.In_2[i])
 	}
@@ -46,10 +46,10 @@ type CircuitWithParameter struct {
 	Param int
 }
 
-func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
+func (circuit *CircuitWithParameter) Define(api frontend.API) error {
 	D := make([]frontend.Variable, 3)
 	for i := 0; i < len(circuit.Path); i++ {
-		D = extractor.Call1(api, ReturnItself{
+		D = abstractor.Call1(api, ReturnItself{
 			In_1: circuit.Path,
 			Out:  D,
 		})
@@ -66,17 +66,13 @@ func (circuit *CircuitWithParameter) AbsDefine(api abstractor.API) error {
 
 	dec := api.FromBinary(bin...)
 	api.AssertIsEqual(circuit.Param, dec)
-	extractor.Call(api, SliceGadget{circuit.Path, circuit.Path})
+	abstractor.Call(api, SliceGadget{circuit.Path, circuit.Path})
 
 	api.Mul(circuit.Path[0], circuit.Path[0])
-	extractor.Call(api, SliceGadget{circuit.Tree, circuit.Tree})
+	abstractor.Call(api, SliceGadget{circuit.Tree, circuit.Tree})
 	api.AssertIsEqual(circuit.Param, circuit.In)
 
 	return nil
-}
-
-func (circuit CircuitWithParameter) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestCircuitWithParameter(t *testing.T) {

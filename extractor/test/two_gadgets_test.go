@@ -17,7 +17,7 @@ type MyWidget struct {
 	Num    uint32
 }
 
-func (gadget MyWidget) DefineGadget(api abstractor.API) interface{} {
+func (gadget MyWidget) DefineGadget(api frontend.API) interface{} {
 	sum := api.Add(gadget.Test_1, gadget.Test_2)
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
 	r := api.Div(sum, mul)
@@ -31,9 +31,9 @@ type MySecondWidget struct {
 	Num    int
 }
 
-func (gadget MySecondWidget) DefineGadget(api abstractor.API) interface{} {
+func (gadget MySecondWidget) DefineGadget(api frontend.API) interface{} {
 	mul := api.Mul(gadget.Test_1, gadget.Test_2)
-	snd := extractor.Call(api, MyWidget{gadget.Test_1, gadget.Test_2, uint32(gadget.Num)})
+	snd := abstractor.Call(api, MyWidget{gadget.Test_1, gadget.Test_2, uint32(gadget.Num)})
 	api.Mul(mul, snd)
 	return nil
 }
@@ -44,15 +44,11 @@ type TwoGadgets struct {
 	Num  int
 }
 
-func (circuit *TwoGadgets) AbsDefine(api abstractor.API) error {
+func (circuit *TwoGadgets) Define(api frontend.API) error {
 	sum := api.Add(circuit.In_1, circuit.In_2)
 	prod := api.Mul(circuit.In_1, circuit.In_2)
-	extractor.CallVoid(api, MySecondWidget{sum, prod, circuit.Num})
+	abstractor.CallVoid(api, MySecondWidget{sum, prod, circuit.Num})
 	return nil
-}
-
-func (circuit TwoGadgets) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestTwoGadgets(t *testing.T) {

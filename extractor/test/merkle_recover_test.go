@@ -16,7 +16,7 @@ type DummyHash struct {
 	In_2 frontend.Variable
 }
 
-func (gadget DummyHash) DefineGadget(api abstractor.API) interface{} {
+func (gadget DummyHash) DefineGadget(api frontend.API) interface{} {
 	r := api.Mul(gadget.In_1, gadget.In_2)
 	return r
 }
@@ -28,20 +28,16 @@ type MerkleRecover struct {
 	Proof   [20]frontend.Variable `gnark:",secret"`
 }
 
-func (circuit *MerkleRecover) AbsDefine(api abstractor.API) error {
+func (circuit *MerkleRecover) Define(api frontend.API) error {
 	current := circuit.Element
 	for i := 0; i < len(circuit.Path); i++ {
-		leftHash := extractor.Call(api, DummyHash{current, circuit.Proof[i]})
-		rightHash := extractor.Call(api, DummyHash{circuit.Proof[i], current})
+		leftHash := abstractor.Call(api, DummyHash{current, circuit.Proof[i]})
+		rightHash := abstractor.Call(api, DummyHash{circuit.Proof[i], current})
 		current = api.Select(circuit.Path[i], rightHash, leftHash)
 	}
 	api.AssertIsEqual(current, circuit.Root)
 
 	return nil
-}
-
-func (circuit MerkleRecover) Define(api frontend.API) error {
-	return abstractor.Concretize(api, &circuit)
 }
 
 func TestMerkleRecover(t *testing.T) {
