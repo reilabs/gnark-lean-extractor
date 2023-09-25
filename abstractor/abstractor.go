@@ -11,6 +11,5 @@ type GadgetDefinition interface {
 }
 
 type API interface {
-	frontend.API
 	Call(gadget GadgetDefinition) interface{}
 }
