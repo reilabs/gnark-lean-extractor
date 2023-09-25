@@ -2,7 +2,7 @@
 // The Call functions are used to call gadgets and get their returnd object.
 // These methods are prepared for doing automated casting from interface{}.
 // Alternatively it's possible to do manual casting by calling
-// abstractor.API.Call() and casting the result to the needed type.
+// abstractor.Call() and casting the result to the needed type.
 package abstractor
 
 import (
