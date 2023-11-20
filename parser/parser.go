@@ -3,6 +3,7 @@ package parser
 import (
 	"math/big"
 
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
@@ -12,6 +13,11 @@ import (
 // `CodeParser` implements the frontend.API as required by consensys/gnark
 type CodeParser struct {
 	ext extractor.CodeExtractor
+}
+
+// Keep GetExtractor for easy chaining of extractors
+func GetExtractor(field ecc.ID) CodeParser {
+	return CodeParser{ext: extractor.GetExtractor(field)}
 }
 
 func (ce *CodeParser) Call(gadget abstractor.GadgetDefinition) interface{} {
