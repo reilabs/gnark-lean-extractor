@@ -1,4 +1,4 @@
-package extractor_test
+package parser_test
 
 import (
 	"log"
@@ -7,7 +7,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
-	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
+	"github.com/reilabs/gnark-lean-extractor/v2/parser"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -80,7 +80,7 @@ func TestCircuitWithParameter(t *testing.T) {
 	assignment := CircuitWithParameter{Path: make([]frontend.Variable, 3), Tree: make([]frontend.Variable, 2)}
 	assignment.Param = paramValue
 	assert.Equal(t, assignment.Param, paramValue, "assignment.Param is a const and should be 20.")
-	out, err := extractor.CircuitToLean(&assignment, ecc.BN254)
+	out, err := parser.CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)
 	}

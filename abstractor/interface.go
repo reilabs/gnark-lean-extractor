@@ -13,9 +13,8 @@ import (
 func Call(api frontend.API, gadget GadgetDefinition) frontend.Variable {
 	if abs, ok := api.(API); ok {
 		return abs.Call(gadget).(frontend.Variable)
-	} else {
-		return gadget.DefineGadget(api).(frontend.Variable)
 	}
+	return gadget.DefineGadget(api).(frontend.Variable)
 }
 
 // CallVoid is used to call a Gadget which doesn't return anything

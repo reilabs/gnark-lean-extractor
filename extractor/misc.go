@@ -1,11 +1,8 @@
 package extractor
 
 import (
-	"errors"
-	"flag"
 	"fmt"
 	"reflect"
-	"runtime/debug"
 	"strings"
 
 	"github.com/consensys/gnark/frontend"
@@ -13,21 +10,6 @@ import (
 	"github.com/mitchellh/copystructure"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 )
-
-// recoverError is used in the top level interface to prevent panic
-// caused by any of the methods in the extractor from propagating
-// When go is running in test mode, it prints the stack trace to aid
-// debugging.
-func recoverError() (err error) {
-	if recover() != nil {
-		if flag.Lookup("test.v") != nil {
-			stack := string(debug.Stack())
-			fmt.Println(stack)
-		}
-		err = errors.New("Panic extracting circuit to Lean")
-	}
-	return nil
-}
 
 // arrayToSlice returns a slice of elements identical to
 // the input array `v`
@@ -135,11 +117,6 @@ func kindOfField(a any, field string) reflect.Kind {
 	return f.Kind()
 }
 
-// getStructName returns the name of struct a
-func getStructName(a any) string {
-	return reflect.TypeOf(a).Elem().Name()
-}
-
 // updateProj recursively creates a Proj object using the `Index` and `Size` from the
 // optional argument `extra`. It uses the argument `gate` as Operand for the innermost Proj.
 // The `extra` optional argument contains the `Index` in even indices and the `Size` in odd indices,
@@ -200,8 +177,8 @@ func replaceArg(gOutputs interface{}, gate Operand, extra ...int) interface{} {
 	}
 }
 
-// cloneGadget performs deep cloning of `gadget`
-func cloneGadget(gadget abstractor.GadgetDefinition) abstractor.GadgetDefinition {
+// CloneGadget performs deep cloning of `gadget`
+func CloneGadget(gadget abstractor.GadgetDefinition) abstractor.GadgetDefinition {
 	dup, err := copystructure.Copy(gadget)
 	if err != nil {
 		panic(err)

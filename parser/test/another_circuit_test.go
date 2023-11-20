@@ -1,4 +1,4 @@
-package extractor_test
+package parser_test
 
 import (
 	"log"
@@ -7,7 +7,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
-	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
+	"github.com/reilabs/gnark-lean-extractor/v2/parser"
 )
 
 // Example: Gadget with nested array of int
@@ -50,7 +50,7 @@ func TestAnotherCircuit(t *testing.T) {
 		In:     make([]frontend.Variable, 4),
 		Matrix: m,
 	}
-	out, err := extractor.CircuitToLean(&assignment, ecc.BN254)
+	out, err := parser.CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)
 	}

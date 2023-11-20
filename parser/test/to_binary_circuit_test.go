@@ -1,4 +1,4 @@
-package extractor_test
+package parser_test
 
 import (
 	"log"
@@ -7,7 +7,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
-	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
+	"github.com/reilabs/gnark-lean-extractor/v2/parser"
 )
 
 // Example: Gadget that returns a vector
@@ -64,7 +64,7 @@ func TestGadgetExtraction(t *testing.T) {
 		In_2:   make([]frontend.Variable, dim_2),
 		Nested: doubleSlice,
 	}
-	out, err := extractor.GadgetToLean(&assignment, ecc.BN254)
+	out, err := parser.GadgetToLean(&assignment, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -79,7 +79,7 @@ func TestToBinaryCircuit(t *testing.T) {
 		doubleSlice[i] = make([]frontend.Variable, dim_2)
 	}
 	assignment := ToBinaryCircuit{Double: doubleSlice}
-	out, err := extractor.CircuitToLean(&assignment, ecc.BN254)
+	out, err := parser.CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)
 	}

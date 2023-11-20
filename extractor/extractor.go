@@ -6,7 +6,6 @@ import (
 	"reflect"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
@@ -23,7 +22,7 @@ type Const struct {
 func (_ Const) isOperand() {}
 
 // Integer struct is used to distinguish between a constant in
-// place of a frontend.Variable and an integer where an integer
+// place of a ExtractorVariable and an integer where an integer
 // is the only type allowed. Integer sruct is currently only
 // used for the length of the result in ToBinary function.
 type Integer struct {
@@ -114,14 +113,14 @@ type ExGadget struct {
 	OutputsFlat []Operand
 	Outputs     interface{}
 	Extractor   *CodeExtractor
-	Fields      []schema.Field
+	Fields      []ExtractorField
 	Args        []ExArg
 }
 
 func (g *ExGadget) isOp() {}
 
 func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) interface{} {
-	args := []frontend.Variable{}
+	args := []ExtractorVariable{}
 
 	rv := reflect.Indirect(reflect.ValueOf(gadget))
 	rt := rv.Type()
@@ -146,22 +145,13 @@ func (g *ExGadget) Call(gadget abstractor.GadgetDefinition) interface{} {
 				args = append(args, arg)
 			}
 		case reflect.Interface:
-			args = append(args, v.Elem().Interface().(frontend.Variable))
+			args = append(args, v.Elem().Interface().(ExtractorVariable))
 		}
 	}
 	gate := g.Extractor.AddApp(g, args...)
 
 	res := replaceArg(g.Outputs, gate)
 	return res
-}
-
-func (ce *CodeExtractor) Call(gadget abstractor.GadgetDefinition) interface{} {
-	// Deep copying `gadget` because `DefineGadget` needs to modify the gadget fields.
-	// This was done as a replacement to the initial method of declaring gadgets using
-	// a direct call to `Define Gadget` within the circuit and then calling GadgetDefinition.Call
-	clonedGadget := cloneGadget(gadget)
-	g := ce.DefineGadget(clonedGadget)
-	return g.Call(gadget)
 }
 
 type ExArgType struct {
@@ -188,7 +178,30 @@ type CodeExtractor struct {
 	FieldID ecc.ID
 }
 
-func sanitizeVars(args ...frontend.Variable) []Operand {
+type ExtractorApi interface {
+	GetCode() []App
+	ResetCode()
+	GetGadgets() []ExGadget
+	GetField() ecc.ID
+}
+
+func (ce CodeExtractor) GetCode() []App {
+	return ce.Code
+}
+
+func (ce *CodeExtractor) ResetCode() {
+	ce.Code = []App{}
+}
+
+func (ce CodeExtractor) GetGadgets() []ExGadget {
+	return ce.Gadgets
+}
+
+func (ce CodeExtractor) GetField() ecc.ID {
+	return ce.FieldID
+}
+
+func sanitizeVars(args ...ExtractorVariable) []Operand {
 	ops := []Operand{}
 	for _, arg := range args {
 		switch arg.(type) {
@@ -219,8 +232,8 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		case big.Int:
 			casted := arg.(big.Int)
 			ops = append(ops, Const{&casted})
-		case []frontend.Variable:
-			opsArray := sanitizeVars(arg.([]frontend.Variable)...)
+		case []ExtractorVariable:
+			opsArray := sanitizeVars(arg.([]ExtractorVariable)...)
 			ops = append(ops, ProjArray{opsArray})
 		case nil:
 			// This takes care of uninitialised fields that are
@@ -234,45 +247,48 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 	return ops
 }
 
-func (ce *CodeExtractor) AddApp(op Op, args ...frontend.Variable) Operand {
+// CodeExtractor implements all the functions which are needed by the extractor
+// to generate Lean code
+
+func (ce *CodeExtractor) AddApp(op Op, args ...ExtractorVariable) Operand {
 	app := App{op, sanitizeVars(args...)}
 	ce.Code = append(ce.Code, app)
 	return Gate{len(ce.Code) - 1}
 }
 
-func (ce *CodeExtractor) Add(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpAdd, append([]frontend.Variable{i1, i2}, in...)...)
+func (ce *CodeExtractor) Add(i1, i2 ExtractorVariable, in ...ExtractorVariable) ExtractorVariable {
+	return ce.AddApp(OpAdd, append([]ExtractorVariable{i1, i2}, in...)...)
 }
 
-func (ce *CodeExtractor) MulAcc(a, b, c frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) MulAcc(a, b, c ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpMulAcc, a, b, c)
 }
 
-func (ce *CodeExtractor) Neg(i1 frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) Neg(i1 ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpNegative, i1)
 }
 
-func (ce *CodeExtractor) Sub(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpSub, append([]frontend.Variable{i1, i2}, in...)...)
+func (ce *CodeExtractor) Sub(i1, i2 ExtractorVariable, in ...ExtractorVariable) ExtractorVariable {
+	return ce.AddApp(OpSub, append([]ExtractorVariable{i1, i2}, in...)...)
 }
 
-func (ce *CodeExtractor) Mul(i1, i2 frontend.Variable, in ...frontend.Variable) frontend.Variable {
-	return ce.AddApp(OpMul, append([]frontend.Variable{i1, i2}, in...)...)
+func (ce *CodeExtractor) Mul(i1, i2 ExtractorVariable, in ...ExtractorVariable) ExtractorVariable {
+	return ce.AddApp(OpMul, append([]ExtractorVariable{i1, i2}, in...)...)
 }
 
-func (ce *CodeExtractor) DivUnchecked(i1, i2 frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) DivUnchecked(i1, i2 ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpDivUnchecked, i1, i2)
 }
 
-func (ce *CodeExtractor) Div(i1, i2 frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) Div(i1, i2 ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpDiv, i1, i2)
 }
 
-func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) Inverse(i1 ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpInverse, i1)
 }
 
-func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {
+func (ce *CodeExtractor) ToBinary(i1 ExtractorVariable, n ...int) []ExtractorVariable {
 	nbBits := ce.FieldID.ScalarField().BitLen()
 	if len(n) == 1 {
 		nbBits = n[0]
@@ -282,82 +298,66 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var
 	}
 
 	gate := ce.AddApp(OpToBinary, i1, Integer{big.NewInt(int64(nbBits))})
-	outs := make([]frontend.Variable, nbBits)
+	outs := make([]ExtractorVariable, nbBits)
 	for i := range outs {
 		outs[i] = Proj{gate, i, len(outs)}
 	}
 	return outs
 }
 
-func (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) FromBinary(b ...ExtractorVariable) ExtractorVariable {
 	// Packs in little-endian
 	if len(b) == 0 {
 		panic("FromBinary has to have at least one argument!")
 	}
-	if reflect.TypeOf(b[0]) == reflect.TypeOf([]frontend.Variable{}) {
+	if reflect.TypeOf(b[0]) == reflect.TypeOf([]ExtractorVariable{}) {
 		panic("Pass operators to FromBinary using ellipsis")
 	}
-	return ce.AddApp(OpFromBinary, append([]frontend.Variable{}, b...)...)
+	return ce.AddApp(OpFromBinary, append([]ExtractorVariable{}, b...)...)
 }
 
-func (ce *CodeExtractor) Xor(a, b frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) Xor(a, b ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpXor, a, b)
 }
 
-func (ce *CodeExtractor) Or(a, b frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) Or(a, b ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpOr, a, b)
 }
 
-func (ce *CodeExtractor) And(a, b frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) And(a, b ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpAnd, a, b)
 }
 
-func (ce *CodeExtractor) Select(b frontend.Variable, i1, i2 frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) Select(b ExtractorVariable, i1, i2 ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpSelect, b, i1, i2)
 }
 
-func (ce *CodeExtractor) Lookup2(b0, b1 frontend.Variable, i0, i1, i2, i3 frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) Lookup2(b0, b1 ExtractorVariable, i0, i1, i2, i3 ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpLookup, b0, b1, i0, i1, i2, i3)
 }
 
-func (ce *CodeExtractor) IsZero(i1 frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) IsZero(i1 ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpIsZero, i1)
 }
 
-func (ce *CodeExtractor) Cmp(i1, i2 frontend.Variable) frontend.Variable {
+func (ce *CodeExtractor) Cmp(i1, i2 ExtractorVariable) ExtractorVariable {
 	return ce.AddApp(OpCmp, i1, i2)
 }
 
-func (ce *CodeExtractor) AssertIsEqual(i1, i2 frontend.Variable) {
+func (ce *CodeExtractor) AssertIsEqual(i1, i2 ExtractorVariable) {
 	ce.AddApp(OpAssertEq, i1, i2)
 }
 
-func (ce *CodeExtractor) AssertIsDifferent(i1, i2 frontend.Variable) {
+func (ce *CodeExtractor) AssertIsDifferent(i1, i2 ExtractorVariable) {
 	ce.AddApp(OpAssertNotEq, i1, i2)
 }
 
-func (ce *CodeExtractor) AssertIsBoolean(i1 frontend.Variable) {
+func (ce *CodeExtractor) AssertIsBoolean(i1 ExtractorVariable) {
 	ce.AddApp(OpAssertIsBool, i1)
 }
 
-func (ce *CodeExtractor) AssertIsLessOrEqual(v frontend.Variable, bound frontend.Variable) {
+func (ce *CodeExtractor) AssertIsLessOrEqual(v ExtractorVariable, bound ExtractorVariable) {
 	ce.AddApp(OpAssertLessEqual, v, bound)
-}
-
-func (ce *CodeExtractor) Println(a ...frontend.Variable) {
-	panic("implement me")
-}
-
-func (ce *CodeExtractor) Compiler() frontend.Compiler {
-	return ce
-}
-
-func (ce *CodeExtractor) MarkBoolean(v frontend.Variable) {
-	panic("implement me")
-}
-
-func (ce *CodeExtractor) IsBoolean(v frontend.Variable) bool {
-	panic("implement me")
 }
 
 func (ce *CodeExtractor) Field() *big.Int {
@@ -369,15 +369,7 @@ func (ce *CodeExtractor) FieldBitLen() int {
 	return ce.FieldID.ScalarField().BitLen()
 }
 
-func (ce *CodeExtractor) Commit(...frontend.Variable) (frontend.Variable, error) {
-	panic("implement me")
-}
-
-func (ce *CodeExtractor) NewHint(f hint.Function, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
-	panic("implement me")
-}
-
-func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
+func (ce *CodeExtractor) ConstantValue(v ExtractorVariable) (*big.Int, bool) {
 	switch v.(type) {
 	case Const:
 		return v.(Const).Value, true
@@ -418,12 +410,12 @@ func (ce *CodeExtractor) ConstantValue(v frontend.Variable) (*big.Int, bool) {
 	}
 }
 
-func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstractor.Gadget {
+func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition, api frontend.API, schema *schema.Schema) abstractor.Gadget {
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
 		panic("DefineGadget only takes pointers to the gadget")
 	}
-	schema, _ := getSchema(gadget)
-	circuitInit(gadget, schema)
+
+	CircuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
 	// for arity because each array element is considered
 	// a parameter
@@ -439,19 +431,19 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 
 	oldCode := ce.Code
 	ce.Code = make([]App, 0)
-	outputs := gadget.DefineGadget(ce)
+	outputs := gadget.DefineGadget(api)
 
 	// Handle gadgets returning nil.
 	// Without the if-statement, the nil would be replaced with (0:F)
 	// due to the case in sanitizeVars
 	if outputs == nil {
-		outputs = []frontend.Variable{}
+		outputs = []ExtractorVariable{}
 	}
 
 	// flattenSlice needs to be called only if there are nested
 	// slices in order to generate a slice of Operand.
 	// TODO: remove `OutputsFlat` field and use only `Outputs`
-	flatOutput := []frontend.Variable{outputs}
+	flatOutput := []ExtractorVariable{outputs}
 	vOutputs := reflect.ValueOf(outputs)
 	if vOutputs.Kind() == reflect.Slice {
 		flatOutput = flattenSlice(vOutputs)
@@ -472,5 +464,3 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	ce.Gadgets = append(ce.Gadgets, exGadget)
 	return &exGadget
 }
-
-var _ abstractor.API = &CodeExtractor{}

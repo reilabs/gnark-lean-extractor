@@ -7,8 +7,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/schema"
+	"github.com/consensys/gnark-crypto/ecc"
 )
 
 // isWhitespacePresent checks there are no whitespaces in the middle
@@ -87,18 +86,29 @@ func exportGadgets(exGadgets []ExGadget) string {
 	return strings.Join(gadgets, "\n\n")
 }
 
+func exportCircuitFunction(name string, circuit ExCircuit) string {
+	return fmt.Sprintf("def %s %s: Prop :=\n%s", name, genArgs(circuit.Inputs), genCircuitBody(circuit))
+}
+
 // exportCircuit generates the `circuit` function in Lean
 func exportCircuit(circuit ExCircuit, name string) string {
-	gadgets := exportGadgets(circuit.Gadgets)
-	circ := fmt.Sprintf("def circuit %s: Prop :=\n%s", genArgs(circuit.Inputs), genCircuitBody(circuit))
 	prelude := exportPrelude(name, circuit.Field.ScalarField())
+	gadgets := exportGadgets(circuit.Gadgets)
+	circ := exportCircuitFunction("circuit", circuit)
 	footer := exportFooter(name)
 	return fmt.Sprintf("%s\n\n%s\n\n%s\n\n%s", prelude, gadgets, circ, footer)
 }
 
-// circuitInit takes struct and a schema to populate all the
+func ExportGadgetsOnly(namespace string, exGadgets []ExGadget, field ecc.ID) string {
+	prelude := exportPrelude(namespace, field.ScalarField())
+	gadgets := exportGadgets(exGadgets)
+	footer := exportFooter(namespace)
+	return fmt.Sprintf("%s\n\n%s\n\n%s", prelude, gadgets, footer)
+}
+
+// CircuitInit takes struct and a schema to populate all the
 // circuit/gagdget fields with Operand.
-func circuitInit(class any, schema *schema.Schema) {
+func CircuitInit(class any, schema *ExtractorSchema) {
 	// https://stackoverflow.com/a/49704408
 	// https://stackoverflow.com/a/14162161
 	// https://stackoverflow.com/a/63422049
@@ -145,7 +155,7 @@ func circuitInit(class any, schema *schema.Schema) {
 	}
 }
 
-func circuitArgs(field schema.Field) ExArgType {
+func circuitArgs(field ExtractorField) ExArgType {
 	// Handling only subfields which are nested arrays
 	switch len(field.SubFields) {
 	case 1:
@@ -160,7 +170,7 @@ func circuitArgs(field schema.Field) ExArgType {
 
 // getExArgs generates a list of ExArg given a `circuit` and a
 // list of `Field`. It is used in the Circuit to Lean functions
-func getExArgs(circuit any, fields []schema.Field) []ExArg {
+func getExArgs(circuit any, fields []ExtractorField) []ExArg {
 	args := []ExArg{}
 	for _, f := range fields {
 		kind := kindOfField(circuit, f.Name)
@@ -168,12 +178,6 @@ func getExArgs(circuit any, fields []schema.Field) []ExArg {
 		args = append(args, arg)
 	}
 	return args
-}
-
-// getSchema is a cloned version of NewSchema without constraints
-func getSchema(circuit any) (*schema.Schema, error) {
-	tVariable := reflect.ValueOf(struct{ A frontend.Variable }{}).FieldByName("A").Type()
-	return schema.New(circuit, tVariable)
 }
 
 func genNestedArrays(a ExArgType) string {

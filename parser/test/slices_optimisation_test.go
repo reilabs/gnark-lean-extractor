@@ -1,4 +1,4 @@
-package extractor_test
+package parser_test
 
 import (
 	"log"
@@ -7,7 +7,7 @@ import (
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
-	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
+	"github.com/reilabs/gnark-lean-extractor/v2/parser"
 )
 
 // Example: checking slices optimisation
@@ -98,7 +98,7 @@ func TestSlicesOptimisation(t *testing.T) {
 		TwoDim:   twoSlice,
 		ThreeDim: threeSlice,
 	}
-	out, err := extractor.CircuitToLean(&assignment, ecc.BN254)
+	out, err := parser.CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)
 	}
