@@ -1,4 +1,4 @@
-package extractor_test
+package parser_test
 
 import (
 	"log"
@@ -6,8 +6,8 @@ import (
 
 	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
-	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
-	"github.com/reilabs/gnark-lean-extractor/v2/extractor"
+	"github.com/reilabs/gnark-lean-extractor/v2/parser"
+	"github.com/reilabs/lean-circuit-compiler/abstractor"
 )
 
 // Example: circuit with multiple gadgets
@@ -53,7 +53,7 @@ func (circuit *TwoGadgets) Define(api frontend.API) error {
 
 func TestTwoGadgets(t *testing.T) {
 	assignment := TwoGadgets{Num: 11}
-	out, err := extractor.CircuitToLean(&assignment, ecc.BN254)
+	out, err := parser.CircuitToLean(&assignment, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -64,7 +64,7 @@ func TestExtractGadgets(t *testing.T) {
 	assignment_1 := DummyHash{}
 	assignment_2 := MySecondWidget{Num: 11}
 	assignment_3 := MySecondWidget{Num: 9}
-	out, err := extractor.ExtractGadgets("MultipleGadgets", ecc.BN254, &assignment_1, &assignment_2, &assignment_3)
+	out, err := parser.ExtractGadgets("MultipleGadgets", ecc.BN254, &assignment_1, &assignment_2, &assignment_3)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -88,7 +88,7 @@ func TestExtractGadgetsVectors(t *testing.T) {
 		Out:  make([]frontend.Variable, dim_1),
 	}
 	assignment_3 := OptimisedVectorGadget{}
-	out, err := extractor.ExtractGadgets("MultipleGadgetsVectors", ecc.BN254, &assignment_1, &assignment_2, &assignment_3)
+	out, err := parser.ExtractGadgets("MultipleGadgetsVectors", ecc.BN254, &assignment_1, &assignment_2, &assignment_3)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestExtractCircuits(t *testing.T) {
 	assignment_4 := TwoGadgets{Num: 6}
 	assignment_5 := TwoGadgets{Num: 6}
 
-	out, err := extractor.ExtractCircuits("MultipleCircuits", ecc.BN254, &assignment_3, &assignment_2, &assignment_1, &assignment_4, &assignment_5)
+	out, err := parser.ExtractCircuits("MultipleCircuits", ecc.BN254, &assignment_3, &assignment_2, &assignment_1, &assignment_4, &assignment_5)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package extractor_test
+package parser_test
 
 import (
 	"bytes"

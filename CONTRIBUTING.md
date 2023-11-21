@@ -3,8 +3,8 @@
 This document exists as a brief introduction for how you can contribute to this
 repository. It includes a guide to
 [the structure of the repository](#repository-structure),
-[building and testing](#building-and-testing) and
-[getting your code on `main`](#getting-your-code-on-main).
+[demo](#demo) of a circuit with full formal verification,
+[testing](#testing) and [getting your code on `main`](#getting-your-code-on-main).
 
 If you are new to Go, there is a [guide](#new-to-go) to getting started with the
 language that provides some basic resources for getting started.
@@ -17,36 +17,52 @@ language that provides some basic resources for getting started.
 
 ## Repository Structure
 
-This repository consists of two primary parts.
+This repository consists of a single package called [`parser`](./parser):
+it is responsible for implementing the `frontend.API` interface from 
+[gnark](https://github.com/ConsenSys/gnark) and call [lean-circuit-compiler](https://github.com/reilabs/lean-circuit-compiler)
+with relevant structures to generate the Lean code for formal verification of the circuit.
 
-- [`abstractor`](./abstractor): The abstractor, which is responsible for
-  providing an abstract front-end to various ZK systems.
-- [`extractor`](./extractor): The extractor, which is responsible for providing
-  the interface and tools that allow the generation of the Lean code from the
-  circuit defined in Go.
+This repository has a dedicated branch for each version of [gnark](https://github.com/ConsenSys/gnark)
+in order to ensure continuous compatibility of your circuits.
 
-## Building and Testing
+## Demo
 
-You can build and test the go project as follows.
+You can build and see the project in action as follows.
 
 1. Clone the repository into a location of your choice.
 
 ```sh
-git clone https://github.com/reilabs/gnark-lean-extractor gnark-lean-demo
+git clone https://github.com/reilabs/gnark-lean-demo
 ```
 
 2. Build the go circuit project using `go` (meaning that you will need to have
    that toolchain set up).
 
 ```sh
-cd gnark-lean-abstractor
-go build
+cd gnark-lean-demo
+go mod download
+go build -o gnark-lean-demo -v ./...
+./gnark-lean-demo extract-circuit --out=lean-circuit/LeanCircuit.lean
 ```
 
-3. To run the tests, you can also use `go`.
+The Lean code will be printed in the file `lean-circuit/LeanCircuit.lean`
+
+## Testing
+
+You can test the parser with pre-defined circuits included in package [`parser_test`](./parser/package).
+
+1. Clone the repository into a location of your choice.
 
 ```sh
-go test
+git clone https://github.com/reilabs/gnark-lean-extractor
+```
+
+2. Build the go circuit project using `go` (meaning that you will need to have
+   that toolchain set up).
+
+```sh
+cd gnark-lean-extractor
+go test -v ./...
 ```
 
 ## Getting Your Code on `main`

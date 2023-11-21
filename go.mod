@@ -20,6 +20,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/reilabs/gnark-lean-extractor/v2 v2.1.1-0.20231120204101-2b9fe45d55d7 // indirect
 	github.com/rogpeppe/go-internal v1.10.0 // indirect
 	github.com/rs/zerolog v1.29.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
