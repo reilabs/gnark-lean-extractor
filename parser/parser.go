@@ -4,7 +4,7 @@ import (
 	"math/big"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend/hint"
+	"github.com/consensys/gnark/constraint/solver"
 	"github.com/consensys/gnark/frontend"
 	"github.com/reilabs/lean-circuit-compiler/abstractor"
 	"github.com/reilabs/lean-circuit-compiler/extractor"
@@ -141,7 +141,7 @@ func (ce *CodeParser) Commit(v ...frontend.Variable) (frontend.Variable, error) 
 	panic("Not implemented")
 }
 
-func (ce *CodeParser) NewHint(f hint.Function, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
+func (ce *CodeParser) NewHint(f solver.Hint, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
 	panic("Not implemented")
 }
 

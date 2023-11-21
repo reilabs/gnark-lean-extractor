@@ -3,8 +3,8 @@ module github.com/reilabs/gnark-lean-extractor/v2
 go 1.20
 
 require (
-	github.com/consensys/gnark v0.8.0
-	github.com/consensys/gnark-crypto v0.9.1
+	github.com/consensys/gnark v0.9.1
+	github.com/consensys/gnark-crypto v0.12.2-0.20231013160410-1f65e75b6dfb
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/stretchr/testify v1.8.1
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
