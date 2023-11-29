@@ -8,6 +8,7 @@ namespace TwoGadgets
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
+abbrev Gates := GatesGnark_8 Order
 
 def MyWidget_11 (Test_1: F) (Test_2: F) (k: F -> Prop): Prop :=
     ∃gate_0, gate_0 = Gates.add Test_1 Test_2 ∧

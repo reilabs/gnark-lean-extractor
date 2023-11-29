@@ -8,6 +8,7 @@ namespace SlicesOptimisation
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
+abbrev Gates := GatesGnark_8 Order
 
 def SlicesGadget_3_2_4_3_2 (TwoDim: Vector (Vector F 3) 2) (ThreeDim: Vector (Vector (Vector F 4) 3) 2) (k: Vector F 7 -> Prop): Prop :=
     k vec![ThreeDim[0][0][0], ThreeDim[0][0][1], ThreeDim[0][0][2], ThreeDim[0][0][3], TwoDim[0][0], TwoDim[0][1], TwoDim[0][2]]

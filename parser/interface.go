@@ -45,7 +45,7 @@ func GadgetToLeanWithName(gadget abstractor.GadgetDefinition, field ecc.ID, name
 
 	api := GetExtractor(field)
 	api.DefineGadget(gadget)
-	return extractor.ExportGadgetsOnly(namespace, api.ext.GetGadgets(), api.ext.GetField()), nil
+	return extractor.ExportGadgetsOnly(namespace, api.ext.GetGadgets(), api.ext.GetField(), extractor.Gnark8), nil
 }
 
 // GadgetToLean exports a `gadget` to Lean over a `field`
@@ -87,7 +87,7 @@ func ExtractCircuits(namespace string, field ecc.ID, circuits ...extractor.Extra
 		api.ext.ResetCode()
 	}
 
-	return extractor.GenerateLeanCircuits(namespace, &api.ext, circuits_extracted), nil
+	return extractor.GenerateLeanCircuits(namespace, &api.ext, circuits_extracted, extractor.Gnark8), nil
 }
 
 // ExtractGadgets is used to export a series of `gadgets` to Lean over a `field` under `namespace`.
@@ -99,5 +99,5 @@ func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.Gadget
 	for _, gadget := range gadgets {
 		api.DefineGadget(gadget)
 	}
-	return extractor.ExportGadgetsOnly(namespace, api.ext.GetGadgets(), api.ext.GetField()), nil
+	return extractor.ExportGadgetsOnly(namespace, api.ext.GetGadgets(), api.ext.GetField(), extractor.Gnark8), nil
 }

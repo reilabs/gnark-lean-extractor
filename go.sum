@@ -35,6 +35,8 @@ github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZb
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/reilabs/lean-circuit-compiler v0.0.0-20231121161717-dbb1e041674f h1:Tc0JpVwbO3201BRJmzsAOoFHnu8+JNP1t3xfobx3KoI=
 github.com/reilabs/lean-circuit-compiler v0.0.0-20231121161717-dbb1e041674f/go.mod h1:omNt4iZc1iRuWNHG9O0ltoGG2MuizDELooBIrxVgz8E=
+github.com/reilabs/lean-circuit-compiler v0.0.0-20231129181745-d11ee38d5b78 h1:e+dtLJo1iliiX+OanXlWXIYAzVFgV+sRd1pv3U0G1ts=
+github.com/reilabs/lean-circuit-compiler v0.0.0-20231129181745-d11ee38d5b78/go.mod h1:omNt4iZc1iRuWNHG9O0ltoGG2MuizDELooBIrxVgz8E=
 github.com/rogpeppe/go-internal v1.10.0 h1:TMyTOH3F/DB16zRVcYyreMH6GnZZrwQVAoYjRBZyWFQ=
 github.com/rogpeppe/go-internal v1.10.0/go.mod h1:UQnix2H7Ngw/k4C5ijL5+65zddjncjaFoBhdsK/akog=
 github.com/rs/xid v1.4.0/go.mod h1:trrq9SKmegXys3aeAKXMUTdJsYXVwGY3RLcfgqegfbg=
