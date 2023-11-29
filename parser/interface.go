@@ -27,7 +27,7 @@ func CircuitToLeanWithName(circuit extractor.ExtractorCircuit, field ecc.ID, nam
 		return "", err
 	}
 
-	return extractor.GenerateLeanCode(namespace, &api.ext, circuit, schema.Fields)
+	return extractor.GenerateLeanCode(namespace, &api.ext, circuit, schema.Fields, extractor.Gnark9)
 }
 
 // CircuitToLean exports a `circuit` to Lean over a `field` with the namespace being the
@@ -45,7 +45,7 @@ func GadgetToLeanWithName(gadget abstractor.GadgetDefinition, field ecc.ID, name
 
 	api := GetExtractor(field)
 	api.DefineGadget(gadget)
-	return extractor.ExportGadgetsOnly(namespace, api.ext.GetGadgets(), api.ext.GetField()), nil
+	return extractor.ExportGadgetsOnly(namespace, api.ext.GetGadgets(), api.ext.GetField(), extractor.Gnark9), nil
 }
 
 // GadgetToLean exports a `gadget` to Lean over a `field`
@@ -80,14 +80,14 @@ func ExtractCircuits(namespace string, field ecc.ID, circuits ...extractor.Extra
 			return "", err
 		}
 
-		circuit_def := extractor.GenerateLeanCircuit(name, &api.ext, circuit, schema.Fields)
+		circuit_def := extractor.GenerateLeanCircuit(name, &api.ext, circuit, schema.Fields, extractor.Gnark9)
 		circuits_extracted = append(circuits_extracted, circuit_def)
 
 		// Resetting elements for next circuit
 		api.ext.ResetCode()
 	}
 
-	return extractor.GenerateLeanCircuits(namespace, &api.ext, circuits_extracted), nil
+	return extractor.GenerateLeanCircuits(namespace, &api.ext, circuits_extracted, extractor.Gnark9), nil
 }
 
 // ExtractGadgets is used to export a series of `gadgets` to Lean over a `field` under `namespace`.
@@ -99,5 +99,5 @@ func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.Gadget
 	for _, gadget := range gadgets {
 		api.DefineGadget(gadget)
 	}
-	return extractor.ExportGadgetsOnly(namespace, api.ext.GetGadgets(), api.ext.GetField()), nil
+	return extractor.ExportGadgetsOnly(namespace, api.ext.GetGadgets(), api.ext.GetField(), extractor.Gnark9), nil
 }

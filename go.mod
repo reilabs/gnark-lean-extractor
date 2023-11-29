@@ -5,7 +5,7 @@ go 1.20
 require (
 	github.com/consensys/gnark v0.9.1
 	github.com/consensys/gnark-crypto v0.12.2-0.20231013160410-1f65e75b6dfb
-	github.com/reilabs/lean-circuit-compiler v0.0.0-20231121161717-dbb1e041674f
+	github.com/reilabs/lean-circuit-compiler v0.0.0-20231129183530-39ea82720a07
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 )
