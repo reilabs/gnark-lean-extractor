@@ -27,7 +27,7 @@ func CircuitToLeanWithName(circuit extractor.ExtractorCircuit, field ecc.ID, nam
 		return "", err
 	}
 
-	return extractor.GenerateLeanCode(namespace, &api.ext, circuit, schema.Fields)
+	return extractor.GenerateLeanCode(namespace, &api.ext, circuit, schema.Fields, extractor.Gnark8)
 }
 
 // CircuitToLean exports a `circuit` to Lean over a `field` with the namespace being the
@@ -80,7 +80,7 @@ func ExtractCircuits(namespace string, field ecc.ID, circuits ...extractor.Extra
 			return "", err
 		}
 
-		circuit_def := extractor.GenerateLeanCircuit(name, &api.ext, circuit, schema.Fields)
+		circuit_def := extractor.GenerateLeanCircuit(name, &api.ext, circuit, schema.Fields, extractor.Gnark8)
 		circuits_extracted = append(circuits_extracted, circuit_def)
 
 		// Resetting elements for next circuit
