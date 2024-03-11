@@ -22,6 +22,10 @@ For an overview of how to use this library, see both the [example](#example) and
 contributing, or are new to Go, please see our
 [contributing guidelines](./CONTRIBUTING.md) for more information.
 
+## Compatibility table
+This version of `gnark-lean-extractor` is compatible with `gnark v0.8.x`.
+It is recommended to import [`ProvenZK-v1.3.0`](https://github.com/reilabs/proven-zk/tree/v1.3.0) in Lean4 to process the circuits extracted with this version of `gnark-lean-extractor`.
+
 ## Example
 
 The following is a brief example of how to design a simple gnark circuit in
@@ -45,9 +49,14 @@ func (circuit MyCircuit) Define(api frontend.API) error {
 }
 ```
 
-Once you export this to Lean, you get a definition as follows:
+Once you export `MyCircuit` to Lean, you obtain the following definition:
 
 ```lean
+import ProvenZk.Gates
+import ProvenZk.Ext.Vector
+
+set_option linter.unusedVariables false
+
 namespace MyCircuit
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
@@ -87,7 +96,7 @@ aforementioned gnark library, and then call the extractor function
 
 ```go
 circuit := MyCircuit{}
-out, err := CircuitToLean(&circuit, ecc.BN254)
+out, err := extractor.CircuitToLean(&circuit, ecc.BN254)
 if err != nil {
     log.Fatal(err)
 }
@@ -95,7 +104,7 @@ fmt.Println(out)
 ```
 
 `CircuitToLean` returns a string which contains the circuit output in a format
-that can be read by the Lean language. The lean code depends on Reilabs'
+that can be read by the Lean language. The Lean code depends on Reilabs'
 [ProvenZK](https://github.com/reilabs/proven-zk) library in order to represent
 gates and other components of the circuit. In doing so, it makes the extracted
 circuit formally verifiable.

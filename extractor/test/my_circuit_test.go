@@ -23,8 +23,8 @@ func (circuit *MyCircuit) Define(api frontend.API) error {
 }
 
 func TestMyCircuit(t *testing.T) {
-	assignment := MyCircuit{}
-	out, err := extractor.CircuitToLean(&assignment, ecc.BN254)
+	circuit := MyCircuit{}
+	out, err := extractor.CircuitToLean(&circuit, ecc.BN254)
 	if err != nil {
 		log.Fatal(err)
 	}
