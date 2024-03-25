@@ -24,7 +24,7 @@ contributing, or are new to Go, please see our
 
 ## Compatibility
 This version of `gnark-lean-extractor` is compatible with `gnark v0.8.x`.
-It is recommended to import [`ProvenZK-659b51e94d4c5160c5d93b92323f0d0dda05c3ad`](https://github.com/reilabs/proven-zk/tree/659b51e94d4c5160c5d93b92323f0d0dda05c3ad) in Lean4 to process the circuits extracted with this version of `gnark-lean-extractor`.
+It is recommended to import [`ProvenZK-v1.4.0`](https://github.com/reilabs/proven-zk/tree/v1.4.0) in Lean4 to process the circuits extracted with this version of `gnark-lean-extractor`.
 
 ## Example
 
