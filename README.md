@@ -14,7 +14,7 @@ circuits from [Go](https://go.dev) to [Lean](https://leanprover.github.io). In
 particular, it deals with circuits constructed as part of the
 [gnark](https://github.com/ConsenSys/gnark) proof system.
 
-This makes it possible to take existing gnark circuits and export them to Lean
+This makes possible to take existing gnark circuits and export them to Lean
 for later formal verification.
 
 For an overview of how to use this library, see both the [example](#example) and
@@ -22,9 +22,9 @@ For an overview of how to use this library, see both the [example](#example) and
 contributing, or are new to Go, please see our
 [contributing guidelines](./CONTRIBUTING.md) for more information.
 
-## Compatibility table
+## Compatibility
 This version of `gnark-lean-extractor` is compatible with `gnark v0.8.x`.
-It is recommended to import [`ProvenZK-v1.3.0`](https://github.com/reilabs/proven-zk/tree/v1.3.0) in Lean4 to process the circuits extracted with this version of `gnark-lean-extractor`.
+It is recommended to import [`ProvenZK-659b51e94d4c5160c5d93b92323f0d0dda05c3ad`](https://github.com/reilabs/proven-zk/tree/659b51e94d4c5160c5d93b92323f0d0dda05c3ad) in Lean4 to process the circuits extracted with this version of `gnark-lean-extractor`.
 
 ## Example
 
@@ -62,6 +62,7 @@ namespace MyCircuit
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
+abbrev Gates := GatesGnark8 Order
 
 def circuit (In_1: F) (In_2: F) (Out: F): Prop :=
     ∃gate_0, gate_0 = Gates.add In_1 In_2 ∧
