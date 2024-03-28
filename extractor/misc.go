@@ -11,7 +11,7 @@ import (
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
 	"github.com/mitchellh/copystructure"
-	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
+	"github.com/reilabs/gnark-lean-extractor/v3/abstractor"
 )
 
 // recoverError is used in the top level interface to prevent panic

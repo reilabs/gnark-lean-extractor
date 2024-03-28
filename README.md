@@ -23,8 +23,10 @@ contributing, or are new to Go, please see our
 [contributing guidelines](./CONTRIBUTING.md) for more information.
 
 ## Compatibility
-This version of `gnark-lean-extractor` is compatible with `gnark v0.8.x`.
+This version of `gnark-lean-extractor` is compatible with `gnark v0.9.x`.
 It is recommended to import [`ProvenZK-v1.4.0`](https://github.com/reilabs/proven-zk/tree/v1.4.0) in Lean4 to process the circuits extracted with this version of `gnark-lean-extractor`.
+
+For compatibility with `gnark v0.8.x`, use `gnark-lean-extractor-v2.2.0`.
 
 ## Example
 
@@ -62,7 +64,7 @@ namespace MyCircuit
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
-abbrev Gates := GatesGnark8 Order
+abbrev Gates := GatesGnark9 Order
 
 def circuit (In_1: F) (In_2: F) (Out: F): Prop :=
     ∃gate_0, gate_0 = Gates.add In_1 In_2 ∧

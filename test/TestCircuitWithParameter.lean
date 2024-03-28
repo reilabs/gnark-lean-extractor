@@ -8,7 +8,7 @@ namespace CircuitWithParameter
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
-abbrev Gates := GatesGnark8 Order
+abbrev Gates := GatesGnark9 Order
 
 def ReturnItself_3_3 (In_1: Vector F 3) (Out: Vector F 3) (k: Vector F 3 -> Prop): Prop :=
     ∃gate_0, gate_0 = Gates.mul In_1[0] In_1[0] ∧
