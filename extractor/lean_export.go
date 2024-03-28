@@ -36,7 +36,7 @@ namespace %s
 def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
-abbrev Gates := %s Order`, trimmedName, order.Text(16), "GatesGnark8")
+abbrev Gates := %s Order`, trimmedName, order.Text(16), "GatesGnark9")
 
 	return s
 }
