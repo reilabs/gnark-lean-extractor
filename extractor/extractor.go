@@ -172,9 +172,8 @@ type ExArgType struct {
 }
 
 type ExArg struct {
-	Name string
-	Kind reflect.Kind
-	Type ExArgType
+	Name      string
+	ArrayType *ExArgType
 }
 
 type ExCircuit struct {
@@ -469,12 +468,11 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 		panic("DefineGadget only takes pointers to the gadget")
 	}
 	schema, _ := getSchema(gadget)
-	circuitInit(gadget, schema)
+	args := circuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
 	// for arity because each array element is considered
 	// a parameter
 	arity := len(schema.Fields)
-	args := getExArgs(gadget, schema.Fields)
 
 	name := generateUniqueName(gadget, args)
 
