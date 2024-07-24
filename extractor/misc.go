@@ -10,21 +10,6 @@ import (
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 )
 
-// recoverError is used in the top level interface to prevent panic
-// caused by any of the methods in the extractor from propagating
-// When go is running in test mode, it prints the stack trace to aid
-// debugging.
-//func recoverError() (err error) {
-//	if recover() != nil {
-//		if flag.Lookup("test.v") != nil {
-//			stack := string(debug.Stack())
-//			fmt.Println(stack)
-//		}
-//		err = errors.New("Panic extracting circuit to Lean")
-//	}
-//	return nil
-//}
-
 // arrayToSlice returns a slice of elements identical to
 // the input array `v`
 func arrayToSlice(v reflect.Value) []frontend.Variable {
