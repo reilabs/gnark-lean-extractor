@@ -1,15 +1,11 @@
 package extractor
 
 import (
-	"errors"
-	"flag"
 	"fmt"
 	"reflect"
-	"runtime/debug"
 	"strings"
 
 	"github.com/consensys/gnark/frontend"
-	"github.com/consensys/gnark/frontend/schema"
 	"github.com/mitchellh/copystructure"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
 )
@@ -18,16 +14,16 @@ import (
 // caused by any of the methods in the extractor from propagating
 // When go is running in test mode, it prints the stack trace to aid
 // debugging.
-func recoverError() (err error) {
-	if recover() != nil {
-		if flag.Lookup("test.v") != nil {
-			stack := string(debug.Stack())
-			fmt.Println(stack)
-		}
-		err = errors.New("Panic extracting circuit to Lean")
-	}
-	return nil
-}
+//func recoverError() (err error) {
+//	if recover() != nil {
+//		if flag.Lookup("test.v") != nil {
+//			stack := string(debug.Stack())
+//			fmt.Println(stack)
+//		}
+//		err = errors.New("Panic extracting circuit to Lean")
+//	}
+//	return nil
+//}
 
 // arrayToSlice returns a slice of elements identical to
 // the input array `v`
@@ -82,29 +78,6 @@ func flattenSlice(value reflect.Value) []frontend.Variable {
 	return value.Interface().([]frontend.Variable)
 }
 
-// arrayInit generates the Proj{} object for each element of v
-func arrayInit(f schema.Field, v reflect.Value, op Operand) error {
-	for i := 0; i < f.ArraySize; i++ {
-		op := Proj{op, i, f.ArraySize}
-		switch len(f.SubFields) {
-		case 1:
-			arrayInit(f.SubFields[0], v.Index(i), op)
-		case 0:
-			if v.Len() != f.ArraySize {
-				// Slices of this type aren't supported yet [[<nil> <nil> <nil>] [<nil> <nil>]]
-				// gnark newSchema doesn't handle different dimensions
-				fmt.Printf("Wrong slices dimensions %+v\n", v)
-				panic("Only slices dimensions not matching")
-			}
-			value := reflect.ValueOf(op)
-			v.Index(i).Set(value)
-		default:
-			panic("Only nested arrays supported in SubFields")
-		}
-	}
-	return nil
-}
-
 // arrayZero sets all the elements of the input slice v to nil.
 // It is used when initialising a new circuit or gadget to ensure
 // the object is clean
@@ -119,20 +92,13 @@ func arrayZero(v reflect.Value) {
 					arrayZero(v.Addr().Elem().Index(i))
 				}
 			} else {
-				zero_array := make([]frontend.Variable, v.Len(), v.Len())
-				v.Set(reflect.ValueOf(&zero_array).Elem())
+				zeroArray := make([]frontend.Variable, v.Len(), v.Len())
+				v.Set(reflect.ValueOf(&zeroArray).Elem())
 			}
 		}
 	default:
 		panic("Only nested slices supported in SubFields of slices")
 	}
-}
-
-// kindOfField returns the Kind of field in struct a
-func kindOfField(a any, field string) reflect.Kind {
-	v := reflect.ValueOf(a).Elem()
-	f := v.FieldByName(field)
-	return f.Kind()
 }
 
 // getStructName returns the name of struct a
@@ -221,9 +187,9 @@ func cloneGadget(gadget abstractor.GadgetDefinition) abstractor.GadgetDefinition
 func generateUniqueName(element any, args []ExArg) string {
 	suffix := ""
 	for _, a := range args {
-		if a.Kind == reflect.Array || a.Kind == reflect.Slice {
+		if a.ArrayType != nil {
 			suffix += "_"
-			suffix += strings.Join(getSizeGadgetArgs(a.Type), "_")
+			suffix += strings.Join(getSizeGadgetArgs(*a.ArrayType), "_")
 		}
 	}
 

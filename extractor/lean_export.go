@@ -99,76 +99,74 @@ func exportCircuit(circuit ExCircuit, name string) string {
 
 // circuitInit takes struct and a schema to populate all the
 // circuit/gagdget fields with Operand.
-func circuitInit(class any, schema *schema.Schema) {
-	// https://stackoverflow.com/a/49704408
-	// https://stackoverflow.com/a/14162161
-	// https://stackoverflow.com/a/63422049
-
+func circuitInit(circuit any, sch *schema.Schema) []ExArg {
 	// The purpose of this function is to initialise the
 	// struct fields with Operand interfaces for being
 	// processed by the Extractor.
-	v := reflect.ValueOf(class)
-	if v.Type().Kind() == reflect.Ptr {
-		ptr := v
-		v = ptr.Elem()
-	} else {
-		ptr := reflect.New(reflect.TypeOf(class))
-		temp := ptr.Elem()
-		temp.Set(v)
+	v := reflect.ValueOf(circuit)
+	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+		v = v.Elem()
 	}
 
-	tmp_c := reflect.ValueOf(&class).Elem().Elem()
-	tmp := reflect.New(tmp_c.Type()).Elem()
-	tmp.Set(tmp_c)
-	for j, f := range schema.Fields {
-		field_name := f.Name
-		field := v.FieldByName(field_name)
-		field_type := field.Type()
+	return structInit(v, sch.Fields, 0, "")
+}
 
-		// Can't assign an array to another array, therefore
-		// initialise each element in the array
-
-		if field_type.Kind() == reflect.Array {
-			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
-		} else if field_type.Kind() == reflect.Slice {
-			// Recreate a zeroed array to remove overlapping pointers if input
-			// arguments are duplicated (i.e. `api.Call(SliceGadget{circuit.Path, circuit.Path})`)
-			arrayZero(tmp.Elem().FieldByName(field_name))
-			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
-		} else if field_type.Kind() == reflect.Interface {
-			init := Input{j}
-			value := reflect.ValueOf(init)
-
-			tmp.Elem().FieldByName(field_name).Set(value)
-		} else {
-			fmt.Printf("Skipped type %s\n", field_type.Kind())
+func structInit(val reflect.Value, fields []schema.Field, offset int, prefix string) []ExArg {
+	var result []ExArg
+	for _, f := range fields {
+		fieldVal := val.FieldByName(f.Name)
+		switch f.Type {
+		case schema.Leaf:
+			input := Input{offset}
+			value := reflect.ValueOf(input)
+			fieldVal.Set(value)
+			result = append(result, ExArg{prefix + f.Name, nil})
+			offset++
+		case schema.Array:
+			if val.Type().Kind() == reflect.Slice {
+				arrayZero(val)
+			}
+			arrTp := arrayInit(fieldVal, arraySubfield(f), Input{offset})
+			result = append(result, ExArg{prefix + f.Name, arrTp})
+			offset++
+		case schema.Struct:
+			recurResult := structInit(val.FieldByName(f.Name), f.SubFields, offset, prefix+f.Name+"_")
+			result = append(result, recurResult...)
+			offset += len(recurResult)
 		}
 	}
+	return result
 }
 
-func circuitArgs(field schema.Field) ExArgType {
-	// Handling only subfields which are nested arrays
-	switch len(field.SubFields) {
-	case 1:
-		subType := circuitArgs(field.SubFields[0])
-		return ExArgType{field.ArraySize, &subType}
-	case 0:
-		return ExArgType{field.ArraySize, nil}
-	default:
-		panic("Only nested arrays supported in SubFields")
+func arraySubfield(field schema.Field) *schema.Field {
+	if len(field.SubFields) == 0 {
+		return nil
 	}
+	return &field.SubFields[0]
 }
 
-// getExArgs generates a list of ExArg given a `circuit` and a
-// list of `Field`. It is used in the Circuit to Lean functions
-func getExArgs(circuit any, fields []schema.Field) []ExArg {
-	args := []ExArg{}
-	for _, f := range fields {
-		kind := kindOfField(circuit, f.Name)
-		arg := ExArg{f.Name, kind, circuitArgs(f)}
-		args = append(args, arg)
+func arrayInit(val reflect.Value, elemField *schema.Field, baseVal Operand) *ExArgType {
+	var childType *ExArgType
+	if elemField == nil {
+		for i := 0; i < val.Len(); i++ {
+			proj := Proj{baseVal, i, val.Len()}
+			value := reflect.ValueOf(proj)
+			val.Index(i).Set(value)
+		}
+	} else {
+		switch elemField.Type {
+		case schema.Leaf:
+			panic("Gnark contract broken – leaf inside array should be nil")
+		case schema.Array:
+			for i := 0; i < val.Len(); i++ {
+				childType = arrayInit(val.Index(i), arraySubfield(*elemField), Proj{baseVal, i, val.Len()})
+			}
+		case schema.Struct:
+			panic("Struct inside array not supported")
+		}
+
 	}
-	return args
+	return &ExArgType{val.Len(), childType}
 }
 
 // getSchema is a cloned version of NewSchema without constraints
@@ -187,10 +185,10 @@ func genNestedArrays(a ExArgType) string {
 func genArgs(inAssignment []ExArg) string {
 	args := make([]string, len(inAssignment))
 	for i, in := range inAssignment {
-		switch in.Kind {
-		case reflect.Array, reflect.Slice:
-			args[i] = fmt.Sprintf("(%s: %s)", in.Name, genNestedArrays(in.Type))
-		default:
+		if in.ArrayType != nil {
+			args[i] = fmt.Sprintf("(%s: %s)", in.Name, genNestedArrays(*in.ArrayType))
+
+		} else {
 			args[i] = fmt.Sprintf("(%s: F)", in.Name)
 		}
 	}
