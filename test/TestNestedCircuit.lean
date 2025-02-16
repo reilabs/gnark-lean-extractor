@@ -12,7 +12,7 @@ abbrev Gates := GatesGnark8 Order
 
 
 
-def circuit (N1_In1: F) (N1_In2: Vector F 5) (N2_In1: Vector (Vector F 4) 4) (N2_In2: Vector F 3): Prop :=
+def circuit (N1_In1: F) (N1_In2: List.Vector F 5) (N2_In1: List.Vector (List.Vector F 4) 4) (N2_In2: List.Vector F 3): Prop :=
     ∃gate_0, gate_0 = Gates.add N1_In2[2] N2_In2[0] ∧
     Gates.eq gate_0 N1_In2[1] ∧
     True
