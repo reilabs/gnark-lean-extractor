@@ -10,7 +10,7 @@ variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
 abbrev Gates := GatesGnark8 Order
 
-def VectorGadget_3_3_3_3 (In_1: Vector F 3) (In_2: Vector F 3) (Nested: Vector (Vector F 3) 3) (k: Vector F 3 -> Prop): Prop :=
+def VectorGadget_3_3_3_3 (In_1: List.Vector F 3) (In_2: List.Vector F 3) (Nested: List.Vector (List.Vector F 3) 3) (k: List.Vector F 3 -> Prop): Prop :=
     ∃_ignored_, _ignored_ = Gates.mul In_1[0] In_2[0] ∧
     ∃_ignored_, _ignored_ = Gates.mul In_1[1] In_2[1] ∧
     ∃gate_2, gate_2 = Gates.mul In_1[2] In_2[2] ∧

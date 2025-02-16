@@ -61,9 +61,9 @@ func genKTypeSignature(output reflect.Value) string {
 	}
 	if output.Index(0).Kind() == reflect.Slice {
 		innerType := genKTypeSignature(output.Index(0))
-		return fmt.Sprintf("Vector (%s) %d", innerType, output.Len())
+		return fmt.Sprintf("List.Vector (%s) %d", innerType, output.Len())
 	}
-	return fmt.Sprintf("Vector F %d", output.Len())
+	return fmt.Sprintf("List.Vector F %d", output.Len())
 }
 
 // exportGadget generates the `gadget` function in Lean
@@ -177,9 +177,9 @@ func getSchema(circuit any) (*schema.Schema, error) {
 
 func genNestedArrays(a ExArgType) string {
 	if a.Type != nil {
-		return fmt.Sprintf("Vector (%s) %d", genNestedArrays(*a.Type), a.Size)
+		return fmt.Sprintf("List.Vector (%s) %d", genNestedArrays(*a.Type), a.Size)
 	}
-	return fmt.Sprintf("Vector F %d", a.Size)
+	return fmt.Sprintf("List.Vector F %d", a.Size)
 }
 
 func genArgs(inAssignment []ExArg) string {
