@@ -2,11 +2,12 @@ package extractor
 
 import (
 	"fmt"
+	"github.com/consensys/gnark/constraint"
+	"github.com/consensys/gnark/constraint/solver"
 	"math/big"
 	"reflect"
 
 	"github.com/consensys/gnark-crypto/ecc"
-	"github.com/consensys/gnark/backend/hint"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
 	"github.com/reilabs/gnark-lean-extractor/v2/abstractor"
@@ -185,6 +186,34 @@ type CodeExtractor struct {
 	Code    []App
 	Gadgets []ExGadget
 	FieldID ecc.ID
+}
+
+func (ce *CodeExtractor) AssertIsCrumb(i1 frontend.Variable) {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) AddBlueprint(b constraint.Blueprint) constraint.BlueprintID {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) AddInstruction(bID constraint.BlueprintID, calldata []uint32) []uint32 {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) Defer(cb func(api frontend.API) error) {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) InternalVariable(wireID uint32) frontend.Variable {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) ToCanonicalVariable(variable frontend.Variable) frontend.CanonicalVariable {
+	panic("implement me")
+}
+
+func (ce *CodeExtractor) SetGkrInfo(info constraint.GkrInfo) error {
+	panic("implement me")
 }
 
 func sanitizeVars(args ...frontend.Variable) []Operand {
@@ -372,7 +401,7 @@ func (ce *CodeExtractor) Commit(...frontend.Variable) (frontend.Variable, error)
 	panic("implement me")
 }
 
-func (ce *CodeExtractor) NewHint(f hint.Function, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
+func (ce *CodeExtractor) NewHint(f solver.Hint, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
 	panic("implement me")
 }
 
