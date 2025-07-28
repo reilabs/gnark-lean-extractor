@@ -1,4 +1,10 @@
 
+
+
+the length of the resulting vector i.e. the number of bits starting from LSBfunc (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Variable {	nbBits := ce.Field.ScalarField().BitLen()	if len(n) == 1 {@@ -308,6 +324,7 @@ func (ce *CodeExtractor) ToBinary(i1 frontend.Variable, n ...int) []frontend.Var	return []frontend.Variable{gate}}
+// From binary vector to integerfunc (ce *CodeExtractor) FromBinary(b ...frontend.Variable) frontend.Variable {	// Packs in little-endian	return ce.AddApp(OpFromBinary, append([]frontend.Variable{}, b...)...)@@ -325,10 +342,12 @@ func (ce *CodeExtractor) And(a, b frontend.Variable) frontend.Variable {	return ce.AddApp(OpAnd, a, b)}
+// b must be 0 or 1. if b ? i1 : i2func (ce *CodeExtractor) Select(b frontend.Variable, i1, i2 frontend.Variable) frontend.Variable {	return  
+
                                  Apache License
                            Version 2.0, January 2004
                         http://www.apache.org/licenses/
