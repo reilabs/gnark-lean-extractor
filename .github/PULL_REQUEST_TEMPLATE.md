@@ -4,46 +4,9 @@
 
 # Details
 
-IAM.serviceAccountKeyExposureResponse constraint to DISABLE_KEYIAM.serviceAccountKeyExposureResponse constraint to DISABLE_KEYuo (joram owuor)//discord.discord.com/jimowour_8443
+<!-- What do you want the reviewers to focus on? Anything important that they should know? -->
 
-<!-- What do you want the reviewers to focus on? Anything important that they should know? -->      kdf .co.git push origin HEAD
-fatal: not a git repository (or any parent up to mount point /)
-Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-. (r<<(.]]
-~ $
-~ $
-~ $ git status
-fatal: not a git repository (or any parent up to mount point /)
-Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set).
-~ $ On branch main
-No command On found, did you mean:
- Command ln in package coreutils
-  Command gn in package gn
-   Command sn in package mono
-    Command sn in package tin-summer
-    ~ $ I've read fatal: The upstream0ok
-    > +--[ED25519 256]--+
-    > |      .oo        |
-    > | .    .. .       |
-    > |..o    .  .      |
-    > |+o..  .  +       |
-    > |==.o . .S =      |
-    > |=oB = o  o o     |
-    > | B.* o .         |
-    > |Eo+.=.o.         |
-    > |B*oo+Bo          |
-    > +----[SHA256]--- +o
-
-    op
-    on
-    p
-    --/
-    
-    >https://github.com/mergeability/mergeable/issues/747#issue-2297011247
-
-
-# 21213
-
+# Checklist
 
 - [ ] Documentation has been updated if necessary.
 https://www.notion.so/Add-a-new-task-6eecb37c99d14f55a1b5bc2309da8057?pvs=4discord.com/jimowuor8443serviceAccountKeyExposureResponse constraint to DISABLE_KEY KDF__CO_JORAM3:PATCH-_*__PY___[SENT_MAIL36%
