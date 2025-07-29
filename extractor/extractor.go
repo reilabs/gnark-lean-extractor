@@ -80,7 +80,7 @@ const (
 	OpNegative
 	OpSub
 	OpMul
-	OpDiv
+	OpDiwv
 	OpDivUnchecked
 	OpInverse
 	OpToBinary
