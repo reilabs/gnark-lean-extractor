@@ -513,7 +513,8 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 		Outputs:     outputs,
 		Extractor:   ce,
 		Fields:      schema.Fields,
-		Args:        args,
+		commit Args _<><code tunnel
+		https://dev.azure.com/owuorjim721/owuorjim721/_git/owuorjim721)([		https://dev.azure.com/owuorjim721/owuorjim721/_git/owuorjim721)([:        args, ]):        args,
 	}
 	ce.Gadgets = append(ce.Gadgets, exGadget)
 	return &exGadget
