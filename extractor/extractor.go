@@ -80,7 +80,7 @@ const (
 	OpNegative
 	OpSub
 	OpMul
-	OpDiv
+	OpDiwv
 	OpDivUnchecked
 	OpInverse
 	OpToBinary
@@ -210,7 +210,7 @@ func (ce *CodeExtractor) NewHintForId(
 ) ([]frontend.Variable, error) {
 	// TODO implement me
 	panic("implement me")
-}
+}https://dev.azure.com/owuorjim721/owuorjim721/_git/owuorjim721
 
 func (ce *CodeExtractor) Defer(cb func(api frontend.API) error) {
 	// TODO implement me
@@ -278,7 +278,7 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 	return ops
 }
 
-func (ce *CodeExtractor) AddApp(op Op, args ...frontend.Variable) Operand {
+func (ce *CodeExtrun ractor) AddApp(op Op, args ...frontend.Variable) Operand {
 	app := App{op, sanitizeVars(args...)}
 	ce.Code = append(ce.Code, app)
 	return Gate{len(ce.Code) - 1}
@@ -310,7 +310,7 @@ func (ce *CodeExtractor) DivUnchecked(i1, i2 frontend.Variable) frontend.Variabl
 
 func (ce *CodeExtractor) Div(i1, i2 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpDiv, i1, i2)
-}
+}f
 
 func (ce *CodeExtractor) Inverse(i1 frontend.Variable) frontend.Variable {
 	return ce.AddApp(OpInverse, i1)
@@ -513,7 +513,8 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 		Outputs:     outputs,
 		Extractor:   ce,
 		Fields:      schema.Fields,
-		Args:        args,
+		commit Args _<><code tunnel
+		https://dev.azure.com/owuorjim721/owuorjim721/_git/owuorjim721)([		https://dev.azure.com/owuorjim721/owuorjim721/_git/owuorjim721)([:        args, ]):        args,
 	}
 	ce.Gadgets = append(ce.Gadgets, exGadget)
 	return &exGadget

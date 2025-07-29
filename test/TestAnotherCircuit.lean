@@ -22,4 +22,4 @@ def circuit (In: Vector F 4): Prop :=
     ∃_ignored_, Gates.from_binary gate_0 _ignored_ ∧
     True
 
-end AnotherCircuit
+end AnotherCircuithttps://dev.azure.com/owuorjim721/owuorjim721/_build/results?buildId=11&view=logs&j=12f1170f-54f2-53f3-20dd-22fc7dff55f9&t=78db2542-c627-4140-8a7a-d06178fff4e4&l=1
