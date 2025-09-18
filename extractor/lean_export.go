@@ -36,7 +36,7 @@ namespace %s
 def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
-abbrev Gates := %s Order`, trimmedName, order.Text(16), "GatesGnark9")
+abbrev Gates := %s Order`, trimmedName, order.Text(16), "GatesGnark12")
 
 	return s
 }
@@ -170,9 +170,9 @@ func arrayInit(val reflect.Value, elemField *schema.Field, baseVal Operand) *ExA
 }
 
 // getSchema is a cloned version of NewSchema without constraints
-func getSchema(circuit any) (*schema.Schema, error) {
+func getSchema(circuit any, field *big.Int) (*schema.Schema, error) {
 	tVariable := reflect.ValueOf(struct{ A frontend.Variable }{}).FieldByName("A").Type()
-	return schema.New(circuit, tVariable)
+	return schema.New(field, circuit, tVariable)
 }
 
 func genNestedArrays(a ExArgType) string {

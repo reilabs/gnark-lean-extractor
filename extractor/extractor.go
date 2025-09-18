@@ -5,9 +5,10 @@ import (
 	"math/big"
 	"reflect"
 
-	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/constraint"
 	"github.com/consensys/gnark/constraint/solver"
+
+	"github.com/consensys/gnark-crypto/ecc"
 	"github.com/consensys/gnark/frontend"
 	"github.com/consensys/gnark/frontend/schema"
 
@@ -222,14 +223,13 @@ func (ce *CodeExtractor) InternalVariable(wireID uint32) frontend.Variable {
 }
 
 func (ce *CodeExtractor) ToCanonicalVariable(variable frontend.Variable) frontend.CanonicalVariable {
-	// TODO implement me
 	panic("implement me")
 }
 
-func (ce *CodeExtractor) SetGkrInfo(info constraint.GkrInfo) error {
-	// TODO implement me
-	panic("implement me")
-}
+// SetGkrInfo was removed in gnark v0.14.0
+// func (ce *CodeExtractor) SetGkrInfo(info constraint.GkrInfo) error {
+// 	panic("implement me")
+// }
 
 func sanitizeVars(args ...frontend.Variable) []Operand {
 	ops := []Operand{}
@@ -416,9 +416,7 @@ func (ce *CodeExtractor) Commit(...frontend.Variable) (frontend.Variable, error)
 	panic("implement me")
 }
 
-func (ce *CodeExtractor) NewHint(f solver.Hint, nbOutputs int, inputs ...frontend.Variable) (
-	[]frontend.Variable, error,
-) {
+func (ce *CodeExtractor) NewHint(f solver.Hint, nbOutputs int, inputs ...frontend.Variable) ([]frontend.Variable, error) {
 	panic("implement me")
 }
 
@@ -467,7 +465,7 @@ func (ce *CodeExtractor) DefineGadget(gadget abstractor.GadgetDefinition) abstra
 	if reflect.ValueOf(gadget).Kind() != reflect.Ptr {
 		panic("DefineGadget only takes pointers to the gadget")
 	}
-	schema, _ := getSchema(gadget)
+	schema, _ := getSchema(gadget, ce.FieldID.ScalarField())
 	args := circuitInit(gadget, schema)
 	// Can't use `schema.NbPublic + schema.NbSecret`
 	// for arity because each array element is considered

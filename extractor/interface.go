@@ -16,7 +16,7 @@ import (
 // CircuitToLean(circuit abstractor.Circuit, field ecc.ID, namespace ...string) because the long term view
 // is to add an optional parameter to support custom `set_option` directives in the header.
 func CircuitToLeanWithName(circuit frontend.Circuit, field ecc.ID, namespace string) (out string, err error) {
-	schema, err := getSchema(circuit)
+	schema, err := getSchema(circuit, field.ScalarField())
 	if err != nil {
 		return "", err
 	}
@@ -94,7 +94,7 @@ func ExtractCircuits(namespace string, field ecc.ID, circuits ...frontend.Circui
 	}
 
 	for _, circuit := range circuits {
-		schema, err := getSchema(circuit)
+		schema, err := getSchema(circuit, field.ScalarField())
 		if err != nil {
 			return "", err
 		}
