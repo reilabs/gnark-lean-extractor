@@ -16,14 +16,12 @@ import (
 // CircuitToLean(circuit abstractor.Circuit, field ecc.ID, namespace ...string) because the long term view
 // is to add an optional parameter to support custom `set_option` directives in the header.
 func CircuitToLeanWithName(circuit frontend.Circuit, field ecc.ID, namespace string) (out string, err error) {
-	defer recoverError()
-
-	schema, err := getSchema(circuit)
+	schema, err := getSchema(circuit, field.ScalarField())
 	if err != nil {
 		return "", err
 	}
 
-	circuitInit(circuit, schema)
+	inputs := circuitInit(circuit, schema)
 
 	api := CodeExtractor{
 		Code:    []App{},
@@ -37,7 +35,7 @@ func CircuitToLeanWithName(circuit frontend.Circuit, field ecc.ID, namespace str
 	}
 
 	extractorCircuit := ExCircuit{
-		Inputs:  getExArgs(circuit, schema.Fields),
+		Inputs:  inputs,
 		Gadgets: api.Gadgets,
 		Code:    api.Code,
 		Field:   api.FieldID,
@@ -57,8 +55,6 @@ func CircuitToLean(circuit frontend.Circuit, field ecc.ID) (string, error) {
 // GadgetToLeanWithName exports a `gadget` to Lean over a `field` with `namespace`
 // Same notes written for CircuitToLeanWithName apply to GadgetToLeanWithName and GadgetToLean
 func GadgetToLeanWithName(gadget abstractor.GadgetDefinition, field ecc.ID, namespace string) (out string, err error) {
-	defer recoverError()
-
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},
@@ -80,7 +76,6 @@ func GadgetToLean(gadget abstractor.GadgetDefinition, field ecc.ID) (string, err
 
 // ExtractCircuits is used to export a series of `circuits` to Lean over a `field` under `namespace`.
 func ExtractCircuits(namespace string, field ecc.ID, circuits ...frontend.Circuit) (out string, err error) {
-	defer recoverError()
 
 	api := CodeExtractor{
 		Code:    []App{},
@@ -99,18 +94,18 @@ func ExtractCircuits(namespace string, field ecc.ID, circuits ...frontend.Circui
 	}
 
 	for _, circuit := range circuits {
-		schema, err := getSchema(circuit)
+		schema, err := getSchema(circuit, field.ScalarField())
 		if err != nil {
 			return "", err
 		}
-		args := getExArgs(circuit, schema.Fields)
+		args := circuitInit(circuit, schema)
+
 		name := generateUniqueName(circuit, args)
 		if slices.Contains(past_circuits, name) {
 			continue
 		}
 		past_circuits = append(past_circuits, name)
 
-		circuitInit(circuit, schema)
 		err = circuit.Define(&api)
 		if err != nil {
 			return "", err
@@ -136,8 +131,6 @@ func ExtractCircuits(namespace string, field ecc.ID, circuits ...frontend.Circui
 
 // ExtractGadgets is used to export a series of `gadgets` to Lean over a `field` under `namespace`.
 func ExtractGadgets(namespace string, field ecc.ID, gadgets ...abstractor.GadgetDefinition) (out string, err error) {
-	defer recoverError()
-
 	api := CodeExtractor{
 		Code:    []App{},
 		Gadgets: []ExGadget{},

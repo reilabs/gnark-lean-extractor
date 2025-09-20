@@ -36,7 +36,7 @@ namespace %s
 def Order : ℕ := 0x%s
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
-abbrev Gates := %s Order`, trimmedName, order.Text(16), "GatesGnark9")
+abbrev Gates := %s Order`, trimmedName, order.Text(16), "GatesGnark12")
 
 	return s
 }
@@ -61,9 +61,9 @@ func genKTypeSignature(output reflect.Value) string {
 	}
 	if output.Index(0).Kind() == reflect.Slice {
 		innerType := genKTypeSignature(output.Index(0))
-		return fmt.Sprintf("Vector (%s) %d", innerType, output.Len())
+		return fmt.Sprintf("List.Vector (%s) %d", innerType, output.Len())
 	}
-	return fmt.Sprintf("Vector F %d", output.Len())
+	return fmt.Sprintf("List.Vector F %d", output.Len())
 }
 
 // exportGadget generates the `gadget` function in Lean
@@ -99,98 +99,96 @@ func exportCircuit(circuit ExCircuit, name string) string {
 
 // circuitInit takes struct and a schema to populate all the
 // circuit/gagdget fields with Operand.
-func circuitInit(class any, schema *schema.Schema) {
-	// https://stackoverflow.com/a/49704408
-	// https://stackoverflow.com/a/14162161
-	// https://stackoverflow.com/a/63422049
-
+func circuitInit(circuit any, sch *schema.Schema) []ExArg {
 	// The purpose of this function is to initialise the
 	// struct fields with Operand interfaces for being
 	// processed by the Extractor.
-	v := reflect.ValueOf(class)
-	if v.Type().Kind() == reflect.Ptr {
-		ptr := v
-		v = ptr.Elem()
-	} else {
-		ptr := reflect.New(reflect.TypeOf(class))
-		temp := ptr.Elem()
-		temp.Set(v)
+	v := reflect.ValueOf(circuit)
+	for v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
+		v = v.Elem()
 	}
 
-	tmp_c := reflect.ValueOf(&class).Elem().Elem()
-	tmp := reflect.New(tmp_c.Type()).Elem()
-	tmp.Set(tmp_c)
-	for j, f := range schema.Fields {
-		field_name := f.Name
-		field := v.FieldByName(field_name)
-		field_type := field.Type()
+	return structInit(v, sch.Fields, 0, "")
+}
 
-		// Can't assign an array to another array, therefore
-		// initialise each element in the array
-
-		if field_type.Kind() == reflect.Array {
-			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
-		} else if field_type.Kind() == reflect.Slice {
-			// Recreate a zeroed array to remove overlapping pointers if input
-			// arguments are duplicated (i.e. `api.Call(SliceGadget{circuit.Path, circuit.Path})`)
-			arrayZero(tmp.Elem().FieldByName(field_name))
-			arrayInit(f, tmp.Elem().FieldByName(field_name), Input{j})
-		} else if field_type.Kind() == reflect.Interface {
-			init := Input{j}
-			value := reflect.ValueOf(init)
-
-			tmp.Elem().FieldByName(field_name).Set(value)
-		} else {
-			fmt.Printf("Skipped type %s\n", field_type.Kind())
+func structInit(val reflect.Value, fields []schema.Field, offset int, prefix string) []ExArg {
+	var result []ExArg
+	for _, f := range fields {
+		fieldVal := val.FieldByName(f.Name)
+		switch f.Type {
+		case schema.Leaf:
+			input := Input{offset}
+			value := reflect.ValueOf(input)
+			fieldVal.Set(value)
+			result = append(result, ExArg{prefix + f.Name, nil})
+			offset++
+		case schema.Array:
+			if fieldVal.Type().Kind() == reflect.Slice {
+				arrayZero(fieldVal)
+			}
+			arrTp := arrayInit(fieldVal, arraySubfield(f), Input{offset})
+			result = append(result, ExArg{prefix + f.Name, arrTp})
+			offset++
+		case schema.Struct:
+			recurResult := structInit(val.FieldByName(f.Name), f.SubFields, offset, prefix+f.Name+"_")
+			result = append(result, recurResult...)
+			offset += len(recurResult)
 		}
 	}
+	return result
 }
 
-func circuitArgs(field schema.Field) ExArgType {
-	// Handling only subfields which are nested arrays
-	switch len(field.SubFields) {
-	case 1:
-		subType := circuitArgs(field.SubFields[0])
-		return ExArgType{field.ArraySize, &subType}
-	case 0:
-		return ExArgType{field.ArraySize, nil}
-	default:
-		panic("Only nested arrays supported in SubFields")
+func arraySubfield(field schema.Field) *schema.Field {
+	if len(field.SubFields) == 0 {
+		return nil
 	}
+	return &field.SubFields[0]
 }
 
-// getExArgs generates a list of ExArg given a `circuit` and a
-// list of `Field`. It is used in the Circuit to Lean functions
-func getExArgs(circuit any, fields []schema.Field) []ExArg {
-	args := []ExArg{}
-	for _, f := range fields {
-		kind := kindOfField(circuit, f.Name)
-		arg := ExArg{f.Name, kind, circuitArgs(f)}
-		args = append(args, arg)
+func arrayInit(val reflect.Value, elemField *schema.Field, baseVal Operand) *ExArgType {
+	var childType *ExArgType
+	if elemField == nil {
+		for i := 0; i < val.Len(); i++ {
+			proj := Proj{baseVal, i, val.Len()}
+			value := reflect.ValueOf(proj)
+			val.Index(i).Set(value)
+		}
+	} else {
+		switch elemField.Type {
+		case schema.Leaf:
+			panic("Gnark contract broken – leaf inside array should be nil")
+		case schema.Array:
+			for i := 0; i < val.Len(); i++ {
+				childType = arrayInit(val.Index(i), arraySubfield(*elemField), Proj{baseVal, i, val.Len()})
+			}
+		case schema.Struct:
+			panic("Struct inside array not supported")
+		}
+
 	}
-	return args
+	return &ExArgType{val.Len(), childType}
 }
 
 // getSchema is a cloned version of NewSchema without constraints
-func getSchema(circuit any) (*schema.Schema, error) {
+func getSchema(circuit any, field *big.Int) (*schema.Schema, error) {
 	tVariable := reflect.ValueOf(struct{ A frontend.Variable }{}).FieldByName("A").Type()
-	return schema.New(circuit, tVariable)
+	return schema.New(field, circuit, tVariable)
 }
 
 func genNestedArrays(a ExArgType) string {
 	if a.Type != nil {
-		return fmt.Sprintf("Vector (%s) %d", genNestedArrays(*a.Type), a.Size)
+		return fmt.Sprintf("List.Vector (%s) %d", genNestedArrays(*a.Type), a.Size)
 	}
-	return fmt.Sprintf("Vector F %d", a.Size)
+	return fmt.Sprintf("List.Vector F %d", a.Size)
 }
 
 func genArgs(inAssignment []ExArg) string {
 	args := make([]string, len(inAssignment))
 	for i, in := range inAssignment {
-		switch in.Kind {
-		case reflect.Array, reflect.Slice:
-			args[i] = fmt.Sprintf("(%s: %s)", in.Name, genNestedArrays(in.Type))
-		default:
+		if in.ArrayType != nil {
+			args[i] = fmt.Sprintf("(%s: %s)", in.Name, genNestedArrays(*in.ArrayType))
+
+		} else {
 			args[i] = fmt.Sprintf("(%s: F)", in.Name)
 		}
 	}

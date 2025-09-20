@@ -8,13 +8,13 @@ namespace MerkleRecover
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 variable [Fact (Nat.Prime Order)]
 abbrev F := ZMod Order
-abbrev Gates := GatesGnark9 Order
+abbrev Gates := GatesGnark12 Order
 
 def DummyHash (In_1: F) (In_2: F) (k: F -> Prop): Prop :=
     ∃gate_0, gate_0 = Gates.mul In_1 In_2 ∧
     k gate_0
 
-def circuit (Root: F) (Element: F) (Path: Vector F 20) (Proof: Vector F 20): Prop :=
+def circuit (Root: F) (Element: F) (Path: List.Vector F 20) (Proof: List.Vector F 20): Prop :=
     DummyHash Element Proof[0] fun gate_0 =>
     DummyHash Proof[0] Element fun gate_1 =>
     ∃gate_2, Gates.select Path[0] gate_1 gate_0 gate_2 ∧
