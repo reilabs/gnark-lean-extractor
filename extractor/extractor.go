@@ -262,6 +262,8 @@ func sanitizeVars(args ...frontend.Variable) []Operand {
 		case big.Int:
 			casted := arg.(big.Int)
 			ops = append(ops, Const{&casted})
+		case *big.Int:
+			ops = append(ops, Const{arg.(*big.Int)})
 		case []frontend.Variable:
 			opsArray := sanitizeVars(arg.([]frontend.Variable)...)
 			ops = append(ops, ProjArray{opsArray})
