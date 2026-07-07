@@ -1,6 +1,6 @@
 module github.com/reilabs/gnark-lean-extractor/v3
 
-go 1.20
+go 1.22.0
 
 require (
 	github.com/consensys/gnark v0.9.2-0.20240322153533-3abde1199375
@@ -8,6 +8,7 @@ require (
 	github.com/mitchellh/copystructure v1.2.0
 	github.com/stretchr/testify v1.8.4
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
+	golang.org/x/tools v0.26.0
 )
 
 require (
@@ -23,7 +24,9 @@ require (
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rs/zerolog v1.30.0 // indirect
-	golang.org/x/sys v0.15.0 // indirect
+	golang.org/x/mod v0.21.0 // indirect
+	golang.org/x/sync v0.8.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )

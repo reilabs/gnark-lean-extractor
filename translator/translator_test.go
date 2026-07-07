@@ -1,0 +1,115 @@
+package translator_test
+
+import (
+	"flag"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/consensys/gnark-crypto/ecc"
+	"github.com/reilabs/gnark-lean-extractor/v3/translator"
+)
+
+var update = flag.Bool("update", false, "update golden files")
+
+func checkGolden(t *testing.T, goldenPath string, out string) {
+	t.Helper()
+	if *update {
+		if err := os.WriteFile(goldenPath, []byte(out), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	want, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("missing golden file (run with -update): %v", err)
+	}
+	if string(want) != out {
+		t.Errorf("output differs from %s.\n--- got ---\n%s", goldenPath, out)
+	}
+}
+
+func TestMerkleChain(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:       "testdata/simple",
+		Circuit:   "MerkleChain",
+		Namespace: "MerkleChain",
+		Field:     ecc.BN254,
+		Blackboxes: map[string]string{
+			"github.com/reilabs/gnark-lean-extractor/v3/translator/testdata/simple.mimc": "MiMC",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "simple", "expected.lean"), out)
+}
+
+// TestRejections checks that circuits whose Go semantics the functional
+// translation cannot reproduce fail loudly instead of translating wrong.
+func TestRejections(t *testing.T) {
+	cases := []struct {
+		circuit string
+		wantErr string
+	}{
+		{"LoopBound", "loop bound"},
+		{"RangeWrite", "ranged over"},
+		{"Alias", "aliases a slice"},
+		{"DirtyArg", "writes the elements"},
+		{"ReturnAlias", "result of id may alias xs"},
+		{"SameArg", "more than once"},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.circuit, func(t *testing.T) {
+			_, err := translator.Translate(translator.Config{
+				Dir:     "testdata/bad",
+				Circuit: c.circuit,
+				Field:   ecc.BN254,
+			})
+			if err == nil {
+				t.Fatalf("expected translation of %s to fail", c.circuit)
+			}
+			if !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("error for %s should mention %q, got: %v", c.circuit, c.wantErr, err)
+			}
+		})
+	}
+}
+
+func TestPoseidonMerkle(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/poseidon",
+		Circuit: "MerkleRecover",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "poseidon", "expected.lean"), out)
+}
+
+func TestPadded(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/padded",
+		Circuit: "Padded",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "padded", "expected.lean"), out)
+}
+
+func TestBitsCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/bits",
+		Circuit: "BitsCircuit",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "bits", "expected.lean"), out)
+}
