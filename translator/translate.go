@@ -23,7 +23,7 @@ type funcTr struct {
 	api    types.Object // the frontend.API parameter
 	recv   types.Object // the circuit receiver (Define only)
 	isMain bool
-	result *kind // helper return kind (nil for Unit)
+	result []kind // helper return kinds (nil = Unit; len 1 = single value; len >1 = tuple)
 
 	tmp  int
 	last lastStmt
@@ -471,15 +471,27 @@ func (f *funcTr) returnStmt(s *ast.ReturnStmt) {
 		f.last = lastExpr
 		return
 	}
-	if f.result == nil {
+	if len(f.result) == 0 {
 		f.t.errf(s.Pos(), "unexpected return value")
 	}
-	str, monadic := f.exprTop(s.Results[0], *f.result)
-	if monadic {
-		f.emit(str)
-	} else {
-		f.emit("return " + str)
+	if len(s.Results) != len(f.result) {
+		f.t.errf(s.Pos(), "return count mismatch: got %d, want %d", len(s.Results), len(f.result))
 	}
+	if len(f.result) == 1 {
+		str, monadic := f.exprTop(s.Results[0], f.result[0])
+		if monadic {
+			f.emit(str)
+		} else {
+			f.emit("return " + str)
+		}
+		f.last = lastExpr
+		return
+	}
+	parts := make([]string, len(s.Results))
+	for i, r := range s.Results {
+		parts[i] = f.atom(r, f.result[i])
+	}
+	f.emit("return (" + strings.Join(parts, ", ") + ")")
 	f.last = lastExpr
 }
 

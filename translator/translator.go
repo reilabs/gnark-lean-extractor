@@ -587,14 +587,19 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 	}
 
 	resType := "Unit"
-	switch sig.Results().Len() {
-	case 0:
-	case 1:
-		k := t.classify(sig.Results().At(0).Type(), fd.Pos())
-		f.result = &k
-		resType = k.leanTypeParen()
-	default:
-		t.errf(fd.Pos(), "multiple return values are not supported: %s", fn.Name())
+	if n := sig.Results().Len(); n > 0 {
+		kinds := make([]kind, n)
+		parts := make([]string, n)
+		for i := 0; i < n; i++ {
+			kinds[i] = t.classify(sig.Results().At(i).Type(), fd.Pos())
+			parts[i] = kinds[i].leanType()
+		}
+		f.result = kinds
+		if n == 1 {
+			resType = kinds[0].leanTypeParen()
+		} else {
+			resType = "(" + strings.Join(parts, " × ") + ")"
+		}
 	}
 
 	f.scanMut(fd.Body)
