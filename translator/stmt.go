@@ -107,7 +107,7 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 		obj := b.info().Defs[id]
 		k := b.t.classify(obj.Type(), id.Pos())
 		b.aliasGuard(k, rhs)
-		str, monadic := b.ec.exprTop(rhs, k)
+		str, monadic := b.exprTop(rhs, k)
 		// Ascribe Int64 bindings so bare numerals don't default to Nat.
 		ascr := ""
 		if k.base == baseInt64 {
@@ -129,7 +129,7 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 			}
 			k := b.t.classify(obj.Type(), lhs.Pos())
 			b.aliasGuard(k, rhs)
-			str, monadic := b.ec.exprTop(rhs, k)
+			str, monadic := b.exprTop(rhs, k)
 			b.push(reassign{name: name, rhs: str, monadic: monadic})
 		case *ast.IndexExpr:
 			id, ok := lhs.X.(*ast.Ident)
@@ -142,8 +142,8 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 				b.t.errf(lhs.Pos(), "assignment to unknown variable %s", id.Name)
 			}
 			bk := b.t.kindOf(lhs.X)
-			idx := b.ec.natAtom(lhs.Index)
-			val := b.ec.atom(rhs, bk.elem())
+			idx := b.natAtom(lhs.Index)
+			val := b.atom(rhs, bk.elem())
 			b.push(indexSet{name: name, idx: idx, val: val})
 		case *ast.SelectorExpr:
 			// Struct field write on a local: rebind the local via Lean's
@@ -159,7 +159,7 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 			}
 			fieldName := sanitize(lhs.Sel.Name)
 			fk := b.t.kindOf(lhs)
-			val := b.ec.atom(rhs, fk)
+			val := b.atom(rhs, fk)
 			b.push(fieldSet{name: name, field: fieldName, val: val})
 		default:
 			b.t.errf(s.Pos(), "unsupported assignment target %T", lhs)
@@ -191,7 +191,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 	results, droppedErr := stripTrailingError(sig.Results())
 	n := results.Len()
 
-	str, monadic := b.ec.exprTop(call, kind{})
+	str, monadic := b.exprTop(call, kind{})
 	if !monadic {
 		b.t.errf(s.Pos(), "multi-assignment RHS must be a Circuit-valued call")
 	}
@@ -307,7 +307,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 					kind:    tuplePartIndex,
 					name:    name,
 					tupleIx: i + 1,
-					idxExpr: b.ec.natAtom(l.Index),
+					idxExpr: b.natAtom(l.Index),
 				})
 			default:
 				b.t.errf(lhs.Pos(), "unsupported multi-assign target %T", lhs)
@@ -371,7 +371,7 @@ func (b *funcBody) emitCopy(call *ast.CallExpr) {
 		b.t.errf(call.Pos(), "copy expects two arguments")
 	}
 	dstExpr := unparen(call.Args[0])
-	src := b.ec.atom(call.Args[1], b.t.kindOf(call.Args[1]))
+	src := b.atom(call.Args[1], b.t.kindOf(call.Args[1]))
 
 	switch dst := dstExpr.(type) {
 	case *ast.Ident:
@@ -396,11 +396,11 @@ func (b *funcBody) emitCopy(call *ast.CallExpr) {
 		}
 		lo := "0"
 		if dst.Low != nil {
-			lo = b.ec.natAtom(dst.Low)
+			lo = b.natAtom(dst.Low)
 		}
 		hi := name + ".length"
 		if dst.High != nil {
-			hi = b.ec.natAtom(dst.High)
+			hi = b.natAtom(dst.High)
 		}
 		b.push(copySlice{name: name, lo: lo, hi: hi, src: src})
 	default:
@@ -455,8 +455,8 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 	// Element writes are fine: they cannot change a length.
 	b.forbidBodyAssign(s.Body, b.readVars(cond.Y), false,
 		"which the loop bound reads — Go re-evaluates the bound every iteration, the translation does not")
-	lo := b.ec.atom(init.Rhs[0], kind{base: baseInt64})
-	hi := b.ec.atom(cond.Y, kind{base: baseInt64})
+	lo := b.atom(init.Rhs[0], kind{base: baseInt64})
+	hi := b.atom(cond.Y, kind{base: baseInt64})
 	name := b.bind(obj)
 	body := b.collectBlock(s.Body.List, true, nil)
 	b.push(forLoop{name: name, lo: lo, hi: hi, body: body})
@@ -476,7 +476,7 @@ func (b *funcBody) rangeStmt(s *ast.RangeStmt) {
 	if xk.depth > 1 && s.Value != nil {
 		b.t.errf(s.Value.Pos(), "ranging with a value over nested slices aliases the inner slices")
 	}
-	xs := b.ec.atom(s.X, xk)
+	xs := b.atom(s.X, xk)
 
 	keyId, _ := s.Key.(*ast.Ident)
 	var valId *ast.Ident
@@ -685,11 +685,11 @@ func (b *funcBody) cond(e ast.Expr) string {
 		default:
 			b.t.errf(e.Pos(), "unsupported condition operator %s", e.Op)
 		}
-		return fmt.Sprintf("%s %s %s", b.ec.atom(e.X, kind{base: baseInt64}), op, b.ec.atom(e.Y, kind{base: baseInt64}))
+		return fmt.Sprintf("%s %s %s", b.atom(e.X, kind{base: baseInt64}), op, b.atom(e.Y, kind{base: baseInt64}))
 	}
 	// Fall-through: expression must be Bool-valued (e.g. `s.zone`).
 	if b.t.kindOf(e).base == baseBool {
-		s, _ := b.ec.exprBare(e, kind{base: baseBool})
+		s, _ := b.exprBare(e, kind{base: baseBool})
 		return s
 	}
 	b.t.errf(e.Pos(), "unsupported condition %T", e)
@@ -735,13 +735,13 @@ func (b *funcBody) returnStmt(s *ast.ReturnStmt) {
 		b.t.errf(s.Pos(), "return count mismatch: got %d, want %d", len(results), len(b.result))
 	}
 	if len(b.result) == 1 {
-		str, monadic := b.ec.exprTop(results[0], b.result[0])
+		str, monadic := b.exprTop(results[0], b.result[0])
 		b.push(ret{val: str, monadic: monadic})
 		return
 	}
 	parts := make([]string, len(results))
 	for i, r := range results {
-		parts[i] = b.ec.atom(r, b.result[i])
+		parts[i] = b.atom(r, b.result[i])
 	}
 	b.push(ret{val: "(" + strings.Join(parts, ", ") + ")"})
 }

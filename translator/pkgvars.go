@@ -7,18 +7,15 @@ import (
 	"go/types"
 )
 
-// pkgInitCtx returns an exprCtx suitable for folding a package-var
-// initializer: there are no bound locals, no receiver, no api parameter, and
-// no do-block to lift a monadic subexpression into (so liftMonadic errfs).
-func (t *translator) pkgInitCtx() *exprCtx {
-	return &exprCtx{
-		t:          t,
-		resolveObj: func(types.Object, token.Pos) (string, bool) { return "", false },
-		isAPI:      func(types.Object) bool { return false },
-		liftMonadic: func(_ string, pos token.Pos) string {
-			t.errf(pos, "package var initializer cannot contain a monadic (Circuit-valued) expression")
-			return ""
-		},
+// newPkgInitBody returns a funcBody used solely as an expression walker for
+// folding a package-var initializer: no bound locals, no receiver, no api,
+// and isPkgInit so liftMonadic errfs — a package-var initializer can't
+// contain a Circuit-valued subexpression.
+func (t *translator) newPkgInitBody() *funcBody {
+	return &funcBody{
+		t:         t,
+		isPkgInit: true,
+		names:     map[types.Object]string{},
 	}
 }
 
@@ -52,7 +49,7 @@ func (t *translator) resolvePkgVar(v *types.Var) string {
 
 		init := spec.Values[idx]
 		k := t.classify(v.Type(), v.Pos())
-		str, _ := t.pkgInitCtx().exprTop(init, k)
+		str, _ := t.newPkgInitBody().exprTop(init, k)
 		return fmt.Sprintf("def %s : %s := %s", name, t.leanType(k), str)
 	})
 }

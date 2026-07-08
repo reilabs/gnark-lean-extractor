@@ -219,19 +219,12 @@ func (t *translator) findFuncDecl(fn *types.Func) *ast.FuncDecl {
 }
 
 func (t *translator) newFuncBody() *funcBody {
-	b := &funcBody{
+	return &funcBody{
 		t:       t,
 		names:   map[types.Object]string{},
 		muts:    map[types.Object]bool{},
 		errVars: map[types.Object]bool{},
 	}
-	b.ec = &exprCtx{
-		t:           t,
-		resolveObj:  b.resolveObj,
-		isAPI:       b.isAPI,
-		liftMonadic: b.liftMonadic,
-	}
-	return b
 }
 
 // translateDefine translates the circuit's Define method into `def circuit`.

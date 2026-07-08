@@ -14,8 +14,13 @@ import (
 // structural properties of the finished tree, not of the walk order.
 type funcBody struct {
 	t     *translator
-	ec    *exprCtx
 	stmts []stmt // stmts accumulated at the *current* block level
+
+	// isPkgInit marks a funcBody used only as an expression walker for
+	// folding a package-var initializer. Such a body has no api / recv /
+	// names, and liftMonadic errfs — a Circuit-valued expression can't be
+	// bound at package scope.
+	isPkgInit bool
 
 	names map[types.Object]string // Go object -> Lean name
 	muts  map[types.Object]bool   // objects reassigned after definition
@@ -186,11 +191,12 @@ func (b *funcBody) aliasGuard(k kind, rhs ast.Expr) {
 	}
 }
 
-// The three methods below are wired into b.ec at construction time as the
-// scope-varying callbacks the expression walker calls back into. resolveObj
-// covers both bound locals and the Circuit receiver so `circuit.method(...)`
-// still lands on a synthesized literal; liftMonadic emits `let t_N ← ...`
-// into the current do-block.
+// The three methods below are the scope-varying hooks the expression walker
+// calls back into (see expr.go). resolveObj covers both bound locals and
+// the Circuit receiver so `circuit.method(...)` still lands on a
+// synthesized literal; liftMonadic emits `let t_N ← ...` into the current
+// do-block, or errfs when we're folding a package-var initializer
+// (isPkgInit) — those can't contain a Circuit-valued subexpression.
 
 func (b *funcBody) resolveObj(obj types.Object, pos token.Pos) (string, bool) {
 	if name, ok := b.names[obj]; ok {
@@ -206,7 +212,10 @@ func (b *funcBody) isAPI(obj types.Object) bool {
 	return b.api != nil && obj == b.api
 }
 
-func (b *funcBody) liftMonadic(str string, _ token.Pos) string {
+func (b *funcBody) liftMonadic(str string, pos token.Pos) string {
+	if b.isPkgInit {
+		b.t.errf(pos, "package var initializer cannot contain a monadic (Circuit-valued) expression")
+	}
 	tmp := fmt.Sprintf("t_%d", b.tmp)
 	b.tmp++
 	b.push(letBind{name: tmp, rhs: str, monadic: true})
@@ -220,5 +229,5 @@ func (b *funcBody) liftMonadic(str string, _ token.Pos) string {
 // caller will never look at; the monadic flag is still returned so the
 // caller can bind with `let _ ← ...` vs. `let _ := ...` as appropriate.
 func (b *funcBody) discardExpr(e ast.Expr) (string, bool) {
-	return b.ec.exprBare(e, kind{})
+	return b.exprBare(e, kind{})
 }
