@@ -59,22 +59,10 @@ type translator struct {
 	cfg Config
 	pkg *packages.Package
 
-	// Three output sections, in the order they appear in the emitted Lean
-	// file. Registries below append into these directly through emit
-	// callbacks wired at construction.
-	structs []string // struct decls + opaque-type axioms
-	axioms  []string // blackbox / gadget axioms
-	defs    []string // package-var defs + translated helper funcs
-
-	// Registries wrap the memoization + emission for each kind of top-level
-	// decl. See registries.go for the shared invariants (reserve-before-
-	// emit for recursion safety, etc.).
-	alloc     *nameAlloc
-	structReg *structRegistry
-	opaqueReg *opaqueRegistry
-	axiomReg  *axiomRegistry
-	pkgVarReg *pkgVarRegistry
-	funcReg   *funcRegistry
+	// emit owns the shared name allocator, per-decl registries, and the
+	// three output sections. Translator methods coordinate the walk;
+	// bookkeeping lives on the emitter.
+	emit *emitter
 }
 
 // Translate loads the Go package in cfg.Dir and translates the Define method
@@ -110,41 +98,31 @@ func Translate(cfg Config) (out string, err error) {
 	}
 
 	t := &translator{
-		cfg:     cfg,
-		pkg:     pkg,
-		alloc:   newNameAlloc(),
-		funcReg: newFuncRegistry(),
+		cfg:  cfg,
+		pkg:  pkg,
+		emit: newEmitter(),
 	}
-	// Registries share the "structs" section for struct decls and opaque
-	// axioms; funcs and package vars share the "defs" section.
-	pushStruct := func(d string) { t.structs = append(t.structs, d) }
-	pushAxiom := func(d string) { t.axioms = append(t.axioms, d) }
-	pushDef := func(d string) { t.defs = append(t.defs, d) }
-	t.structReg = newStructRegistry(t.alloc, pushStruct)
-	t.opaqueReg = newOpaqueRegistry(t.alloc, pushStruct)
-	t.axiomReg = newAxiomRegistry(t.alloc, pushAxiom)
-	t.pkgVarReg = newPkgVarRegistry(t.alloc, pushDef)
 	for _, r := range []string{
 		"circuit", "Gates", "F", "Order", "Circuit", "Int64", "goRange",
 	} {
-		t.alloc.reserveExact(r)
+		t.emit.alloc.reserveExact(r)
 	}
 	// Reserve the outer namespace name too.
-	t.alloc.reserveExact(cfg.Namespace)
+	t.emit.alloc.reserveExact(cfg.Namespace)
 
 	circuitDef := t.translateDefine()
 
 	var b strings.Builder
 	b.WriteString(t.prelude())
-	for _, s := range t.structs {
+	for _, s := range t.emit.structs {
 		b.WriteString("\n\n")
 		b.WriteString(s)
 	}
-	for _, a := range t.axioms {
+	for _, a := range t.emit.axioms {
 		b.WriteString("\n\n")
 		b.WriteString(a)
 	}
-	for _, d := range t.defs {
+	for _, d := range t.emit.defs {
 		b.WriteString("\n\n")
 		b.WriteString(d)
 	}
@@ -152,7 +130,7 @@ func Translate(cfg Config) (out string, err error) {
 	b.WriteString(circuitDef)
 	// When the circuit references an opaque type, wrap the whole body in a
 	// noncomputable section.
-	if t.opaqueReg.any() {
+	if t.emit.opaqueReg.any() {
 		b.WriteString(fmt.Sprintf("\n\nend %s\n", cfg.Namespace))
 		out := strings.Replace(b.String(), "namespace "+cfg.Namespace,
 			"namespace "+cfg.Namespace+"\n\nnoncomputable section", 1)
@@ -271,7 +249,7 @@ func (t *translator) translateDefine() string {
 // translateFunc translates a package-local helper function on demand and
 // returns its Lean name. Callees are emitted before callers.
 func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
-	slot := t.funcReg.slot(fn)
+	slot := t.emit.funcReg.slot(fn)
 	if slot.done {
 		return slot.leanName
 	}
@@ -422,10 +400,10 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 	if recvNamed != nil {
 		// Method: `def <StructName>.<MethodName>` — Lean namespace
 		// resolution lets call sites use `u.MethodName args` dot syntax.
-		name = t.structReg.name(recvNamed) + "." + fn.Name()
-		t.alloc.reserveExact(name)
+		name = t.emit.structReg.name(recvNamed) + "." + fn.Name()
+		t.emit.alloc.reserveExact(name)
 	} else {
-		name = t.alloc.fresh(fn.Name())
+		name = t.emit.alloc.fresh(fn.Name())
 	}
 	slot.leanName = name
 	slot.done = true
@@ -433,7 +411,7 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 	body := renderBlock(block{stmts: b.stmts, allowReassignEnd: false}, 1)
 	def := fmt.Sprintf("def %s %s : Circuit %s := do\n%s",
 		name, strings.Join(binders, " "), resType, strings.Join(body, "\n"))
-	t.defs = append(t.defs, def)
+	t.emit.defs = append(t.emit.defs, def)
 	return name
 }
 

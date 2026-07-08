@@ -13,7 +13,7 @@ func (t *translator) resultAliases(call *ast.CallExpr) (map[types.Object]bool, b
 	fn, _ := t.callee(call).(*types.Func)
 	objs := map[types.Object]bool{}
 	external := false
-	for q := range t.funcReg.aliasReturns(fn) {
+	for q := range t.emit.funcReg.aliasReturns(fn) {
 		if q >= len(call.Args) {
 			continue
 		}
@@ -57,11 +57,11 @@ func (t *translator) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramOb
 	a := &effectAnalysis{t: t, fn: fn, body: body, info: t.pkg.TypesInfo, paramIdx: paramIdx}
 	dirty := a.computeDirtyParams()
 	if fn != nil {
-		t.funcReg.slot(fn).dirtyParams = dirty
+		t.emit.funcReg.slot(fn).dirtyParams = dirty
 	}
 	rebinds, returnCalls := a.collectRebindsReturns()
 	if aliases := a.computeAliasReturns(); fn != nil && len(aliases) > 0 {
-		t.funcReg.slot(fn).aliasReturns = aliases
+		t.emit.funcReg.slot(fn).aliasReturns = aliases
 	}
 	a.enforceCallSites(rebinds, returnCalls)
 }
@@ -108,7 +108,7 @@ func (a *effectAnalysis) computeDirtyParams() map[int]bool {
 			}
 		case *ast.CallExpr:
 			fn, _ := a.t.callee(n).(*types.Func)
-			for p := range a.t.funcReg.dirtyParams(fn) {
+			for p := range a.t.emit.funcReg.dirtyParams(fn) {
 				if p < len(n.Args) {
 					mark(n.Args[p])
 				}
@@ -213,7 +213,7 @@ func (a *effectAnalysis) enforceCallSites(
 			return true
 		}
 		callee, _ := a.t.callee(call).(*types.Func)
-		for p := range a.t.funcReg.dirtyParams(callee) {
+		for p := range a.t.emit.funcReg.dirtyParams(callee) {
 			if p >= len(call.Args) {
 				continue
 			}

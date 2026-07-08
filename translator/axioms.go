@@ -12,18 +12,18 @@ import (
 // return kind (F, List F, …) comes from the abstractor variant at the call
 // site: Call → F, CallVoid → Unit, Call1/2/3 → List{1,2,3} F.
 func (t *translator) ensureGadgetAxiom(defineFn *types.Func, gadgetType *types.Named, wrapperName string, pos token.Pos) {
-	slot := t.funcReg.slot(defineFn)
+	slot := t.emit.funcReg.slot(defineFn)
 	if slot.done {
 		return
 	}
-	structName := t.structReg.name(gadgetType)
+	structName := t.emit.structReg.name(gadgetType)
 	if structName == "" {
 		t.errf(pos, "gadget %s has no registered structure", gadgetType.Obj().Name())
 	}
 	predName := structName + "_DefineGadget_pred"
 	defName := structName + ".DefineGadget"
-	t.alloc.reserveExact(predName)
-	t.alloc.reserveExact(defName)
+	t.emit.alloc.reserveExact(predName)
+	t.emit.alloc.reserveExact(defName)
 	slot.leanName = defName
 	slot.done = true
 
@@ -50,16 +50,16 @@ func (t *translator) ensureGadgetAxiom(defineFn *types.Func, gadgetType *types.N
 		def = fmt.Sprintf("def %s (g : %s) : Circuit %s := fun k =>\n  ∃ out, %s g out ∧ k out",
 			defName, structName, t.leanTypeParen(resKind), predName)
 	}
-	t.axioms = append(t.axioms, axiom+"\n"+def)
+	t.emit.axioms = append(t.emit.axioms, axiom+"\n"+def)
 }
 
 // ensureAxiom emits an axiom + wrapper for a blackboxed function. Returns
 // the emitted Lean name — which may differ from the requested one if a
 // collision (e.g. with the outer namespace) forced a suffix.
 func (t *translator) ensureAxiom(leanName string, fn *types.Func, pos token.Pos) string {
-	return t.axiomReg.getOrRegister(leanName, func(actual string) string {
+	return t.emit.axiomReg.getOrRegister(leanName, func(actual string) string {
 		// Also reserve the companion predicate name so it can't be shadowed.
-		t.alloc.reserveExact(actual + "_pred")
+		t.emit.alloc.reserveExact(actual + "_pred")
 
 		sig := fn.Type().(*types.Signature)
 		var binders, predArgTypes, argNames []string

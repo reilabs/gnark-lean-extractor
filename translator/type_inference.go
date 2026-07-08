@@ -41,7 +41,7 @@ func (t *translator) leanType(k kind) string {
 	case baseOpaque:
 		s = k.opaque
 	case baseStruct:
-		s = t.structReg.name(k.named)
+		s = t.emit.structReg.name(k.named)
 	default:
 		s = "F"
 	}
@@ -157,7 +157,7 @@ func (t *translator) classify(typ types.Type, pos token.Pos) kind {
 	// structs the caller has explicitly declined to model. Emit an
 	// `axiom X : Type` and return an opaque kind.
 	if leanName, ok := t.opaqueLeanName(typ); ok {
-		t.opaqueReg.register(leanName)
+		t.emit.opaqueReg.register(leanName)
 		return kind{base: baseOpaque, opaque: leanName}
 	}
 	// Non-opaque aliases: recurse into the target so downstream sees the
@@ -229,7 +229,7 @@ func (t *translator) opaqueLeanName(typ types.Type) (string, bool) {
 // struct's name BEFORE running this build callback so inner structs get
 // emitted first (topological order) while outer references resolve.
 func (t *translator) registerStruct(named *types.Named, st *types.Struct, pos token.Pos) {
-	t.structReg.getOrRegister(named, func(name string) string {
+	t.emit.structReg.getOrRegister(named, func(name string) string {
 		fieldLines := make([]string, st.NumFields())
 		for i := 0; i < st.NumFields(); i++ {
 			fld := st.Field(i)

@@ -24,7 +24,7 @@ func (t *translator) newPkgInitBody() *funcBody {
 // initializer through the main expression walker. Errors via t.errf if the
 // var has no initializer or its shape is not foldable.
 func (t *translator) resolvePkgVar(v *types.Var) string {
-	return t.pkgVarReg.getOrRegister(v, func(name string) string {
+	return t.emit.pkgVarReg.getOrRegister(v, func(name string) string {
 		var spec *ast.ValueSpec
 		var idx int
 		for _, file := range t.pkg.Syntax {
