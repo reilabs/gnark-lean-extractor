@@ -74,7 +74,7 @@ func (b *funcBody) declStmt(s *ast.DeclStmt) {
 			name := b.bind(obj)
 			b.push(letBind{
 				name: name,
-				rhs:  b.t.zeroValueOf(k, typ, id.Pos()),
+				rhs:  b.t.zero(k, typ),
 				mut:  b.muts[obj],
 			})
 		}
@@ -110,7 +110,7 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 		str, monadic := b.ec.exprTop(rhs, k)
 		// Ascribe Int64 bindings so bare numerals don't default to Nat.
 		ascr := ""
-		if k.goInt {
+		if k.base == baseInt64 {
 			ascr = " : Int64"
 		}
 		name := b.bind(obj)
@@ -265,7 +265,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 			mut = true
 		}
 		ascr := ""
-		if k.goInt {
+		if k.base == baseInt64 {
 			ascr = " : Int64"
 		}
 		b.push(letBind{name: name, ascr: ascr, rhs: str, monadic: true, mut: mut})
@@ -455,8 +455,8 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 	// Element writes are fine: they cannot change a length.
 	b.forbidBodyAssign(s.Body, b.readVars(cond.Y), false,
 		"which the loop bound reads — Go re-evaluates the bound every iteration, the translation does not")
-	lo := b.ec.atom(init.Rhs[0], kind{goInt: true})
-	hi := b.ec.atom(cond.Y, kind{goInt: true})
+	lo := b.ec.atom(init.Rhs[0], kind{base: baseInt64})
+	hi := b.ec.atom(cond.Y, kind{base: baseInt64})
 	name := b.bind(obj)
 	body := b.collectBlock(s.Body.List, true, nil)
 	b.push(forLoop{name: name, lo: lo, hi: hi, body: body})
@@ -470,7 +470,7 @@ func (b *funcBody) rangeStmt(s *ast.RangeStmt) {
 		b.t.errf(s.Pos(), "only `for i, v := range` loops are supported")
 	}
 	xk := b.t.kindOf(s.X)
-	if xk.goInt || xk.depth < 1 {
+	if xk.base == baseInt64 || xk.depth < 1 {
 		b.t.errf(s.X.Pos(), "range is only supported over slices/arrays of Variable")
 	}
 	if xk.depth > 1 && s.Value != nil {
@@ -665,7 +665,7 @@ func (b *funcBody) cond(e ast.Expr) string {
 		case token.LOR:
 			return fmt.Sprintf("(%s ∨ %s)", b.cond(e.X), b.cond(e.Y))
 		}
-		if !b.t.kindOf(e.X).goInt {
+		if b.t.kindOf(e.X).base != baseInt64 {
 			b.t.errf(e.Pos(), "conditions may only compare Go integers")
 		}
 		var op string
@@ -685,11 +685,11 @@ func (b *funcBody) cond(e ast.Expr) string {
 		default:
 			b.t.errf(e.Pos(), "unsupported condition operator %s", e.Op)
 		}
-		return fmt.Sprintf("%s %s %s", b.ec.atom(e.X, kind{goInt: true}), op, b.ec.atom(e.Y, kind{goInt: true}))
+		return fmt.Sprintf("%s %s %s", b.ec.atom(e.X, kind{base: baseInt64}), op, b.ec.atom(e.Y, kind{base: baseInt64}))
 	}
 	// Fall-through: expression must be Bool-valued (e.g. `s.zone`).
-	if b.t.kindOf(e).goBool {
-		s, _ := b.ec.exprBare(e, kind{goBool: true})
+	if b.t.kindOf(e).base == baseBool {
+		s, _ := b.ec.exprBare(e, kind{base: baseBool})
 		return s
 	}
 	b.t.errf(e.Pos(), "unsupported condition %T", e)

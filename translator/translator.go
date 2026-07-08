@@ -75,19 +75,6 @@ type translator struct {
 	axiomReg  *axiomRegistry
 	pkgVarReg *pkgVarRegistry
 	funcReg   *funcRegistry
-
-	// Per-function analysis summaries, populated by analyzeEffects.
-	//
-	// dirtyParams records, per translated function, the signature indices of
-	// slice parameters whose backing array the function (transitively)
-	// writes. Go callers observe such writes through aliasing; the
-	// functional translation does not, so call sites are restricted.
-	dirtyParams map[*types.Func]map[int]bool
-	// aliasReturns records, per translated function, the signature indices
-	// of parameters whose backing array the result may alias (e.g. a
-	// function that returns its own parameter). Binding such a result to a
-	// different variable would create a second name for the same backing.
-	aliasReturns map[*types.Func]map[int]bool
 }
 
 // Translate loads the Go package in cfg.Dir and translates the Define method
@@ -123,12 +110,10 @@ func Translate(cfg Config) (out string, err error) {
 	}
 
 	t := &translator{
-		cfg:          cfg,
-		pkg:          pkg,
-		alloc:        newNameAlloc(),
-		funcReg:      newFuncRegistry(),
-		dirtyParams:  map[*types.Func]map[int]bool{},
-		aliasReturns: map[*types.Func]map[int]bool{},
+		cfg:     cfg,
+		pkg:     pkg,
+		alloc:   newNameAlloc(),
+		funcReg: newFuncRegistry(),
 	}
 	// Registries share the "structs" section for struct decls and opaque
 	// axioms; funcs and package vars share the "defs" section.
@@ -233,237 +218,6 @@ func (t *translator) findFuncDecl(fn *types.Func) *ast.FuncDecl {
 	return nil
 }
 
-func (t *translator) calleeOf(call *ast.CallExpr) *types.Func {
-	switch fun := unparen(call.Fun).(type) {
-	case *ast.Ident:
-		fn, _ := t.pkg.TypesInfo.Uses[fun].(*types.Func)
-		return fn
-	case *ast.SelectorExpr:
-		fn, _ := t.pkg.TypesInfo.Uses[fun.Sel].(*types.Func)
-		return fn
-	}
-	return nil
-}
-
-// resultAliases returns the named variables a call's result may alias
-// (per the callee's aliasReturns summary, recursing through nested calls),
-// and whether it may alias something unnamed (a field or slice element).
-func (t *translator) resultAliases(call *ast.CallExpr) (map[types.Object]bool, bool) {
-	objs := map[types.Object]bool{}
-	external := false
-	for q := range t.aliasReturns[t.calleeOf(call)] {
-		if q >= len(call.Args) {
-			continue
-		}
-		switch arg := unparen(call.Args[q]).(type) {
-		case *ast.Ident:
-			if obj := t.pkg.TypesInfo.Uses[arg]; obj != nil {
-				objs[obj] = true
-			}
-		case *ast.CallExpr:
-			o2, e2 := t.resultAliases(arg)
-			for o := range o2 {
-				objs[o] = true
-			}
-			external = external || e2
-		case *ast.CompositeLit:
-			// Fresh backing with no other name; aliasing it is harmless.
-		default:
-			external = true
-		}
-	}
-	return objs, external
-}
-
-// analyzeEffects enforces the invariant the translation's value semantics
-// rely on: every slice backing array has at most one live name. It computes
-// two summaries per function — which slice parameters have their backing
-// written (dirtyParams) and which the result may alias (aliasReturns) — and
-// rejects call sites that would let Go's aliasing become observable. A
-// written-position argument must be a fresh value or the rebinding form
-// `x = f(..., x)` (the write lands on a backing whose only name is
-// immediately rebound to the equal-by-induction result); a result that may
-// alias an argument may only be bound back to that same variable.
-func (t *translator) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramObjs []types.Object) {
-	info := t.pkg.TypesInfo
-	paramIdx := map[types.Object]int{}
-	for i, o := range paramObjs {
-		if o != nil {
-			paramIdx[o] = i
-		}
-	}
-
-	dirty := map[int]bool{}
-	markIdent := func(e ast.Expr) {
-		if id, ok := unparen(e).(*ast.Ident); ok {
-			if i, ok := paramIdx[info.Uses[id]]; ok {
-				dirty[i] = true
-			}
-		}
-	}
-	ast.Inspect(body, func(n ast.Node) bool {
-		switch n := n.(type) {
-		case *ast.AssignStmt:
-			if n.Tok != token.DEFINE {
-				for _, l := range n.Lhs {
-					if ix, ok := l.(*ast.IndexExpr); ok {
-						markIdent(ix.X)
-					}
-				}
-			}
-		case *ast.CallExpr:
-			for p := range t.dirtyParams[t.calleeOf(n)] {
-				if p < len(n.Args) {
-					markIdent(n.Args[p])
-				}
-			}
-		}
-		return true
-	})
-	if fn != nil {
-		t.dirtyParams[fn] = dirty
-	}
-
-	// rebinds records calls of the shape `x = f(...)` / `x := f(...)` with
-	// their target; returnCalls records calls returned directly.
-	rebinds := map[*ast.CallExpr]types.Object{}
-	returnCalls := map[*ast.CallExpr]bool{}
-	ast.Inspect(body, func(n ast.Node) bool {
-		switch n := n.(type) {
-		case *ast.AssignStmt:
-			if len(n.Lhs) == 1 && len(n.Rhs) == 1 {
-				if lhs, ok := n.Lhs[0].(*ast.Ident); ok {
-					if call, ok := unparen(n.Rhs[0]).(*ast.CallExpr); ok {
-						if n.Tok == token.DEFINE {
-							rebinds[call] = info.Defs[lhs]
-						} else {
-							rebinds[call] = info.Uses[lhs]
-						}
-					}
-				}
-			}
-		case *ast.ReturnStmt:
-			if len(n.Results) == 1 {
-				if call, ok := unparen(n.Results[0]).(*ast.CallExpr); ok {
-					returnCalls[call] = true
-				}
-			}
-		}
-		return true
-	})
-
-	// aliasReturns summary: which parameters may the result alias? In
-	// accepted programs a local slice never aliases a parameter (any bind
-	// that would create such an alias is rejected below), so returning a
-	// local is safe and only parameter names and returned calls matter.
-	if fn != nil {
-		sig := fn.Type().(*types.Signature)
-		results, _ := stripTrailingError(sig.Results())
-		// Interface{} returns can't be classified structurally — the concrete return type is inferred
-		// separately in translateFunc. Skip alias analysis in that case:
-		// gadgets don't return references to slice params.
-		if results.Len() == 1 && !isEmptyInterface(results.At(0).Type()) &&
-			t.classify(results.At(0).Type(), fn.Pos()).depth > 0 {
-			ret := map[int]bool{}
-			ast.Inspect(body, func(n ast.Node) bool {
-				rs, ok := n.(*ast.ReturnStmt)
-				if !ok || len(rs.Results) != 1 {
-					return true
-				}
-				switch r := unparen(rs.Results[0]).(type) {
-				case *ast.Ident:
-					if i, ok := paramIdx[info.Uses[r]]; ok {
-						ret[i] = true
-					}
-				case *ast.CallExpr:
-					objs, external := t.resultAliases(r)
-					if external {
-						t.errf(rs.Pos(), "returns a slice that may alias a field or slice element")
-					}
-					for o := range objs {
-						if i, ok := paramIdx[o]; ok {
-							ret[i] = true
-						}
-					}
-				case *ast.IndexExpr, *ast.SelectorExpr:
-					t.errf(rs.Pos(), "returns an alias of a slice element or field")
-				}
-				return true
-			})
-			if len(ret) > 0 {
-				t.aliasReturns[fn] = ret
-			}
-		}
-	}
-
-	ast.Inspect(body, func(n ast.Node) bool {
-		call, ok := n.(*ast.CallExpr)
-		if !ok {
-			return true
-		}
-		callee := t.calleeOf(call)
-
-		// Written positions: fresh value or `x = f(..., x)`, and the
-		// rebound variable must not appear as any other argument (Go's f
-		// would see writes through both names, the translation would not).
-		for p := range t.dirtyParams[callee] {
-			if p >= len(call.Args) {
-				continue
-			}
-			switch arg := unparen(call.Args[p]).(type) {
-			case *ast.CompositeLit:
-				// Fresh value: nothing else observes its backing array.
-			case *ast.CallExpr:
-				if objs, external := t.resultAliases(arg); external || len(objs) > 0 {
-					t.errf(call.Args[p].Pos(),
-						"%s writes the elements of this argument, whose backing array is aliased elsewhere",
-						callee.Name())
-				}
-			case *ast.Ident:
-				obj := info.Uses[arg]
-				if obj == nil || rebinds[call] != obj {
-					t.errf(arg.Pos(),
-						"%s writes the elements of this argument, which Go callers observe through aliasing but the translation does not — use the form %s = %s(..., %s)",
-						callee.Name(), arg.Name, callee.Name(), arg.Name)
-				}
-				for j, other := range call.Args {
-					if j == p {
-						continue
-					}
-					if id, ok := unparen(other).(*ast.Ident); ok && info.Uses[id] == obj {
-						t.errf(other.Pos(),
-							"%s is passed to %s more than once while %s writes its elements — Go sees those writes through both parameters, the translation does not",
-							arg.Name, callee.Name(), callee.Name())
-					}
-				}
-			default:
-				t.errf(call.Args[p].Pos(),
-					"%s writes the elements of this argument — pass a variable in the form x = %s(..., x) or a fresh value",
-					callee.Name(), callee.Name())
-			}
-		}
-
-		// Aliasing results: a result that may alias an argument must be
-		// bound back to that same variable (a returned call is handled by
-		// the summary above).
-		if returnCalls[call] {
-			return true
-		}
-		objs, external := t.resultAliases(call)
-		if external {
-			t.errf(call.Pos(), "the result of %s may alias a field or slice element", callee.Name())
-		}
-		for o := range objs {
-			if o != rebinds[call] {
-				t.errf(call.Pos(),
-					"the result of %s may alias %s — bind it back to the same variable (%s = %s(..., %s)) so the backing array keeps a single name",
-					callee.Name(), o.Name(), o.Name(), callee.Name(), o.Name())
-			}
-		}
-		return true
-	})
-}
-
 func (t *translator) newFuncBody() *funcBody {
 	b := &funcBody{
 		t:       t,
@@ -555,7 +309,7 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 	if fd.Recv != nil {
 		recvType := t.pkg.TypesInfo.TypeOf(fd.Recv.List[0].Type)
 		rk := t.classify(recvType, fd.Recv.Pos())
-		if rk.named == nil || rk.depth != 0 {
+		if rk.base != baseStruct || rk.depth != 0 {
 			t.errf(fd.Recv.Pos(), "unsupported receiver type for %s", fn.Name())
 		}
 		recvNamed = rk.named
@@ -659,7 +413,7 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 			for i, n := range namedReturns {
 				zero := "(0 : F)"
 				if i < len(b.result) {
-					zero = b.t.zeroForKind(b.result[i])
+					zero = b.t.zero(b.result[i], nil)
 				}
 				b.push(letBind{name: n, rhs: zero, mut: true})
 			}

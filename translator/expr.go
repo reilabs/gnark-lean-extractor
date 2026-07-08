@@ -43,7 +43,7 @@ func (t *translator) renderConst(v constant.Value, want kind, pos token.Pos) str
 		t.errf(pos, "unsupported constant %s", v)
 	}
 	s := v.ExactString()
-	if want.goInt {
+	if want.base == baseInt64 {
 		// Bare numerals elaborate against the expected Int64 type;
 		// let-bindings get an explicit ascription instead.
 		return s
@@ -70,44 +70,29 @@ func (t *translator) isIntValued(e ast.Expr) bool {
 	return b.Kind() != types.Uint8
 }
 
-// zeroValueOf renders the Lean expression corresponding to Go's zero value
-// at kind k / underlying type typ.
-func (t *translator) zeroValueOf(k kind, typ types.Type, pos token.Pos) string {
-	if k.goInt {
-		return "(0 : Int64)"
-	}
-	if k.goBool {
-		return "false"
-	}
+// zero renders the Lean expression for Go's zero value at kind k. If typ is
+// non-nil and its underlying type is a fixed-length Array, the returned
+// expression is `List.replicate N <elem-zero>` — needed so `var xs [N]F`
+// declarations translate to the right length. Pass nil when only the kind
+// is known (named returns, tuple slots) or when a slice's `[]` empty result
+// is what you want.
+func (t *translator) zero(k kind, typ types.Type) string {
 	if k.depth == 0 {
-		if k.opaque != "" || k.named != nil {
+		switch k.base {
+		case baseInt64:
+			return "(0 : Int64)"
+		case baseBool:
+			return "false"
+		case baseStruct, baseOpaque:
 			return "default"
+		default:
+			return "(0 : F)"
 		}
-		return "(0 : F)"
 	}
-	// Array with a fixed length — replicate the zero-of-elem k.length times.
-	// Slice has no compile-time length, so we can only produce `[]` (empty).
-	if arr, ok := typ.Underlying().(*types.Array); ok {
-		elemK := k.elem()
-		return fmt.Sprintf("List.replicate %d %s", arr.Len(), t.zeroValueOf(elemK, arr.Elem(), pos))
-	}
-	return "[]"
-}
-
-// zeroForKind is a type-free wrapper used when only the kind is known
-// (named returns, since their declared types aren't easy to thread).
-func (t *translator) zeroForKind(k kind) string {
-	if k.goInt {
-		return "(0 : Int64)"
-	}
-	if k.goBool {
-		return "false"
-	}
-	if k.depth == 0 {
-		if k.opaque != "" || k.named != nil {
-			return "default"
+	if typ != nil {
+		if arr, ok := typ.Underlying().(*types.Array); ok {
+			return fmt.Sprintf("List.replicate %d %s", arr.Len(), t.zero(k.elem(), arr.Elem()))
 		}
-		return "(0 : F)"
 	}
 	return "[]"
 }
@@ -149,7 +134,7 @@ func (c *exprCtx) atom(e ast.Expr, want kind) string {
 // field through .toInt mod p.
 func (c *exprCtx) exprTop(e ast.Expr, want kind) (string, bool) {
 	str, monadic := c.exprBare(e, want)
-	if !monadic && !want.goInt && want.depth == 0 && c.t.isIntValued(e) {
+	if !monadic && want.base != baseInt64 && want.depth == 0 && c.t.isIntValued(e) {
 		return fmt.Sprintf("((%s).toInt : F)", str), false
 	}
 	return str, monadic
@@ -216,10 +201,10 @@ func (c *exprCtx) exprBare(e ast.Expr, want kind) (string, bool) {
 		return c.call(e)
 	case *ast.CompositeLit:
 		k := c.t.classify(c.t.info().TypeOf(e), e.Pos())
-		if k.named != nil && k.depth == 0 {
+		if k.base == baseStruct && k.depth == 0 {
 			return c.structLit(e, k), false
 		}
-		if k.goInt || k.depth == 0 {
+		if k.base == baseInt64 || k.depth == 0 {
 			c.t.errf(e.Pos(), "unsupported composite literal type")
 		}
 		elems := make([]string, len(e.Elts))
@@ -240,7 +225,7 @@ func (c *exprCtx) exprBare(e ast.Expr, want kind) (string, bool) {
 		// `!x` on Go bool → Lean Bool negation. Circuit-level `!` is
 		// still routed through the gates path in cond().
 		if e.Op == token.NOT {
-			inner, monadic := c.exprBare(e.X, kind{goBool: true})
+			inner, monadic := c.exprBare(e.X, kind{base: baseBool})
 			return "!" + wrapParen(inner), monadic
 		}
 		c.t.errf(e.Pos(), "unsupported unary operator %s", e.Op)
@@ -253,10 +238,10 @@ func (c *exprCtx) exprBare(e ast.Expr, want kind) (string, bool) {
 		}
 		return c.exprBare(e.X, want)
 	case *ast.BinaryExpr:
-		if !c.t.kindOf(e.X).goInt {
+		if c.t.kindOf(e.X).base != baseInt64 {
 			c.t.errf(e.Pos(), "arithmetic on Variables must go through the api")
 		}
-		gi := kind{goInt: true}
+		gi := kind{base: baseInt64}
 		x, y := c.atom(e.X, gi), c.atom(e.Y, gi)
 		switch e.Op {
 		case token.ADD:
@@ -302,7 +287,7 @@ func (c *exprCtx) natRaw(e ast.Expr) string {
 			}
 		}
 	}
-	return c.atom(e, kind{goInt: true}) + ".toInt.toNat"
+	return c.atom(e, kind{base: baseInt64}) + ".toInt.toNat"
 }
 
 func (c *exprCtx) natAtom(e ast.Expr) string {
@@ -354,7 +339,7 @@ func (c *exprCtx) call(e *ast.CallExpr) (string, bool) {
 				}
 				mk := c.t.classify(c.t.info().TypeOf(e), e.Pos())
 				n := c.natAtom(e.Args[1])
-				return fmt.Sprintf("List.replicate %s %s", n, c.t.zeroForKind(mk.elem())), false
+				return fmt.Sprintf("List.replicate %s %s", n, c.t.zero(mk.elem(), nil)), false
 			default:
 				c.t.errf(e.Pos(), "unsupported builtin %s", b.Name())
 			}
@@ -464,7 +449,7 @@ func (c *exprCtx) callArgs(e *ast.CallExpr, fn *types.Func) string {
 	tail := e.Args[fixed:]
 	if e.Ellipsis.IsValid() && len(tail) == 1 {
 		// Spread: the caller already has a slice; pass through as-is.
-		listKind := kind{depth: elemKind.depth + 1, named: elemKind.named, opaque: elemKind.opaque}
+		listKind := kind{base: elemKind.base, depth: elemKind.depth + 1, named: elemKind.named, opaque: elemKind.opaque}
 		out.WriteString(" ")
 		out.WriteString(c.atom(tail[0], listKind))
 		return out.String()
@@ -612,7 +597,7 @@ func (c *exprCtx) structLit(e *ast.CompositeLit, k kind) string {
 			if v, ok := supplied[fld.Name()]; ok {
 				val = c.atom(v, fk)
 			} else {
-				val = c.t.zeroForKind(fk)
+				val = c.t.zero(fk, nil)
 			}
 			parts = append(parts, fmt.Sprintf("%s := %s", sanitize(fld.Name()), val))
 		}

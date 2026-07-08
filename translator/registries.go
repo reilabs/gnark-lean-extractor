@@ -29,10 +29,7 @@ func (a *nameAlloc) fresh(base string) string {
 	return name
 }
 
-// funcSlot models a helper's translation lifecycle. It replaces two parallel
-// translator maps (funcNames + inFlight): rather than one map's absence
-// meaning "not yet visited" and another's presence meaning "in progress",
-// the state is one explicit slot with three states —
+// funcSlot models a helper's translation lifecycle
 //
 //	{done:false, inFlight:false}     — not yet visited
 //	{done:false, inFlight:true}      — partial (recursion is an error here)
@@ -41,6 +38,13 @@ type funcSlot struct {
 	leanName string
 	inFlight bool
 	done     bool
+	// dirtyParams: signature indices of slice parameters whose backing
+	// array the function (transitively) writes. Populated by
+	// analyzeEffects.
+	dirtyParams map[int]bool
+	// aliasReturns: signature indices of parameters whose backing array
+	// the result may alias. Populated by analyzeEffects.
+	aliasReturns map[int]bool
 }
 
 // funcRegistry memoizes translation status for package-local helper funcs.
@@ -61,6 +65,24 @@ func (r *funcRegistry) slot(fn *types.Func) *funcSlot {
 		r.slots[fn] = s
 	}
 	return s
+}
+
+// dirtyParams returns fn's dirty-param set, or nil if fn has no slot or no
+// summary (nil-map read yields false for any key — the caller can iterate
+// safely).
+func (r *funcRegistry) dirtyParams(fn *types.Func) map[int]bool {
+	if s := r.slots[fn]; s != nil {
+		return s.dirtyParams
+	}
+	return nil
+}
+
+// aliasReturns returns fn's alias-return set, or nil if fn has no slot.
+func (r *funcRegistry) aliasReturns(fn *types.Func) map[int]bool {
+	if s := r.slots[fn]; s != nil {
+		return s.aliasReturns
+	}
+	return nil
 }
 
 // structRegistry memoizes Lean structure declarations for Go named structs.

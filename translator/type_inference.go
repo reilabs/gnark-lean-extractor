@@ -8,31 +8,39 @@ import (
 	"strings"
 )
 
-// kind is the translator's type universe: Go integers (modelled bit-exactly
-// as Int64 on the Lean side), field elements F, a named Go struct, or an
-// opaque type (declared via Config.OpaqueTypes) — with an optional list
-// depth stacked on top. `named` and `opaque` are mutually exclusive at the
-// base.
+// baseKind is the underlying scalar kind that lives at the leaf of a kind's
+// depth stack. Exactly one of these applies to any kind, and the zero value
+// (baseF, meaning F / frontend.Variable) makes `kind{}` a valid literal for
+// the default case.
+type baseKind int8
+
+const (
+	baseF      baseKind = iota // F — the field element (frontend.Variable)
+	baseInt64                  // Int64 — Go integer, tracked bit-exactly
+	baseBool                   // Bool — Go bool
+	baseStruct                 // a Go named struct; kind.named is set
+	baseOpaque                 // a Config.OpaqueTypes name; kind.opaque is set
+)
+
+// kind is the translator's type universe: a base (F / Int64 / Bool / named
+// struct / opaque type) plus a list depth stacked on top.
 type kind struct {
-	goInt  bool
-	goBool bool         // Go bool → Lean Bool
+	base   baseKind
 	depth  int          // 0 = base, 1 = List base, 2 = List (List base), ...
-	named  *types.Named // when non-nil, the base is this Go struct
-	opaque string       // when non-empty, the base is an opaque Lean type
+	named  *types.Named // set iff base == baseStruct
+	opaque string       // set iff base == baseOpaque
 }
 
 func (t *translator) leanType(k kind) string {
-	if k.goInt {
-		return "Int64"
-	}
-	if k.goBool {
-		return "Bool"
-	}
 	var s string
-	switch {
-	case k.opaque != "":
+	switch k.base {
+	case baseInt64:
+		return "Int64"
+	case baseBool:
+		return "Bool"
+	case baseOpaque:
 		s = k.opaque
-	case k.named != nil:
+	case baseStruct:
 		s = t.structReg.name(k.named)
 	default:
 		s = "F"
@@ -58,7 +66,7 @@ func (t *translator) leanTypeParen(k kind) string {
 }
 
 func (k kind) elem() kind {
-	return kind{depth: k.depth - 1, named: k.named, opaque: k.opaque}
+	return kind{base: k.base, depth: k.depth - 1, named: k.named, opaque: k.opaque}
 }
 
 func gnarkNamed(typ types.Type, name string) bool {
@@ -150,7 +158,7 @@ func (t *translator) classify(typ types.Type, pos token.Pos) kind {
 	// `axiom X : Type` and return an opaque kind.
 	if leanName, ok := t.opaqueLeanName(typ); ok {
 		t.opaqueReg.register(leanName)
-		return kind{opaque: leanName}
+		return kind{base: baseOpaque, opaque: leanName}
 	}
 	// Non-opaque aliases: recurse into the target so downstream sees the
 	// structural type.
@@ -160,7 +168,7 @@ func (t *translator) classify(typ types.Type, pos token.Pos) kind {
 	if named, ok := typ.(*types.Named); ok {
 		if st, ok := named.Underlying().(*types.Struct); ok {
 			t.registerStruct(named, st, pos)
-			return kind{named: named}
+			return kind{base: baseStruct, named: named}
 		}
 	}
 	switch u := typ.Underlying().(type) {
@@ -172,20 +180,20 @@ func (t *translator) classify(typ types.Type, pos token.Pos) kind {
 			return kind{}
 		}
 		if u.Kind() == types.Bool {
-			return kind{goBool: true}
+			return kind{base: baseBool}
 		}
 		if u.Info()&types.IsInteger != 0 {
-			return kind{goInt: true}
+			return kind{base: baseInt64}
 		}
 	case *types.Slice:
 		e := t.classify(u.Elem(), pos)
-		if !e.goInt && !e.goBool {
-			return kind{depth: e.depth + 1, named: e.named, opaque: e.opaque}
+		if e.base != baseInt64 && e.base != baseBool {
+			return kind{base: e.base, depth: e.depth + 1, named: e.named, opaque: e.opaque}
 		}
 	case *types.Array:
 		e := t.classify(u.Elem(), pos)
-		if !e.goInt && !e.goBool {
-			return kind{depth: e.depth + 1, named: e.named, opaque: e.opaque}
+		if e.base != baseInt64 && e.base != baseBool {
+			return kind{base: e.base, depth: e.depth + 1, named: e.named, opaque: e.opaque}
 		}
 	}
 	t.errf(pos, "unsupported type %s (expected frontend.Variable, integers, structs, or slices/arrays thereof)", typ)
