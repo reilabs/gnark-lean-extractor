@@ -38,13 +38,7 @@ type funcSlot struct {
 	leanName string
 	inFlight bool
 	done     bool
-	// dirtyParams: signature indices of slice parameters whose backing
-	// array the function (transitively) writes. Populated by
-	// analyzeEffects.
-	dirtyParams map[int]bool
-	// aliasReturns: signature indices of parameters whose backing array
-	// the result may alias. Populated by analyzeEffects.
-	aliasReturns map[int]bool
+	summary  effectSummary
 }
 
 // funcRegistry memoizes translation status for package-local helper funcs.
@@ -67,22 +61,14 @@ func (r *funcRegistry) slot(fn *types.Func) *funcSlot {
 	return s
 }
 
-// dirtyParams returns fn's dirty-param set, or nil if fn has no slot or no
-// summary (nil-map read yields false for any key — the caller can iterate
-// safely).
-func (r *funcRegistry) dirtyParams(fn *types.Func) map[int]bool {
+// summary returns fn's effect summary, or the zero value if fn has no slot.
+// Callers iterate summary.dirtyParams / summary.aliasReturns directly; a nil
+// map iterates as empty.
+func (r *funcRegistry) summary(fn *types.Func) effectSummary {
 	if s := r.slots[fn]; s != nil {
-		return s.dirtyParams
+		return s.summary
 	}
-	return nil
-}
-
-// aliasReturns returns fn's alias-return set, or nil if fn has no slot.
-func (r *funcRegistry) aliasReturns(fn *types.Func) map[int]bool {
-	if s := r.slots[fn]; s != nil {
-		return s.aliasReturns
-	}
-	return nil
+	return effectSummary{}
 }
 
 // structRegistry memoizes Lean structure declarations for Go named structs.
