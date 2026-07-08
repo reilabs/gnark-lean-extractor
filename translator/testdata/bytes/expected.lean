@@ -3,7 +3,7 @@ import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 
-namespace MerkleChain
+namespace Bytes
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 abbrev F := ZMod Order
@@ -51,20 +51,19 @@ def toBinary (a : F) (n : Nat) : Circuit (List F) := fun k =>
 
 end Gates
 
-axiom MiMC_pred : F → F → F → Prop
-def MiMC (a : F) (b : F) : Circuit F := fun k =>
-  ∃ out, MiMC_pred a b out ∧ k out
+def addBytes (bs : List F) : Circuit F := do
+  let mut acc := (0 : F)
+  for b in bs do
+    acc := Gates.add acc b
+  return acc
 
-def hash2 (a : F) (b : F) : Circuit F := do
-  let s := Gates.add a b
-  return Gates.mul s s
+def circuit (Sum : F) : Circuit Unit := do
+  let dom := [(97 : F), (98 : F), (99 : F)]
+  let mut vars := List.replicate dom.length (0 : F)
+  for i in goRange 0 (Int64.ofNat dom.length) do
+    let b := dom[i.toInt.toNat]!
+    vars := vars.set i.toInt.toNat b
+  let t_0 ← addBytes vars
+  Gates.eq t_0 Sum
 
-def circuit (Leaf : F) (Path : List F) (Root : F) : Circuit Unit := do
-  let mut h := Leaf
-  for i in goRange 0 (Int64.ofNat Path.length) do
-    h ← hash2 h (Path[i.toInt.toNat]!)
-    h ← MiMC h (Path[i.toInt.toNat]!)
-  let sum := Gates.add h (1 : F)
-  Gates.eq sum Root
-
-end MerkleChain
+end Bytes

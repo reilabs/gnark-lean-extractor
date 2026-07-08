@@ -3,7 +3,7 @@ import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 
-namespace MerkleChain
+namespace Errret
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 abbrev F := ZMod Order
@@ -51,20 +51,25 @@ def toBinary (a : F) (n : Nat) : Circuit (List F) := fun k =>
 
 end Gates
 
-axiom MiMC_pred : F → F → F → Prop
-def MiMC (a : F) (b : F) : Circuit F := fun k =>
-  ∃ out, MiMC_pred a b out ∧ k out
+def assertEq (a : F) (b : F) : Circuit Unit := do
+  Gates.eq a b
+  pure ()
 
-def hash2 (a : F) (b : F) : Circuit F := do
-  let s := Gates.add a b
-  return Gates.mul s s
+def doubled (x : F) : Circuit F := do
+  return Gates.add x x
 
-def circuit (Leaf : F) (Path : List F) (Root : F) : Circuit Unit := do
-  let mut h := Leaf
-  for i in goRange 0 (Int64.ofNat Path.length) do
-    h ← hash2 h (Path[i.toInt.toNat]!)
-    h ← MiMC h (Path[i.toInt.toNat]!)
-  let sum := Gates.add h (1 : F)
-  Gates.eq sum Root
+def split (x : F) : Circuit (F × F) := do
+  return ((Gates.add x (1 : F)), (Gates.sub x (1 : F)))
 
-end MerkleChain
+def combine (a : F) (b : F) : Circuit F := do
+  let da ← doubled a
+  let db ← doubled b
+  let (lo, hi) ← split (Gates.add da db)
+  return Gates.mul lo hi
+
+def circuit (A : F) (B : F) (C : F) (D : F) : Circuit Unit := do
+  let _ ← assertEq A B
+  let out_ ← combine C D
+  Gates.eq out_ A
+
+end Errret

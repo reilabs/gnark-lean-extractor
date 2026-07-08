@@ -3,7 +3,7 @@ import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 
-namespace MerkleChain
+namespace CopyBuiltin
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 abbrev F := ZMod Order
@@ -51,20 +51,13 @@ def toBinary (a : F) (n : Nat) : Circuit (List F) := fun k =>
 
 end Gates
 
-axiom MiMC_pred : F → F → F → Prop
-def MiMC (a : F) (b : F) : Circuit F := fun k =>
-  ∃ out, MiMC_pred a b out ∧ k out
+def circuit (Src : List F) : Circuit Unit := do
+  let mut dst := List.replicate 4 (0 : F)
+  dst := Src.take dst.length
+  Gates.eq (dst[0]!) (Src[0]!)
+  let mut pt := List.replicate 8 (0 : F)
+  pt := pt.take 0 ++ Src.take (4 - 0) ++ pt.drop 4
+  pt := pt.take 4 ++ Src.take (8 - 4) ++ pt.drop 8
+  Gates.eq (pt[4]!) (Src[0]!)
 
-def hash2 (a : F) (b : F) : Circuit F := do
-  let s := Gates.add a b
-  return Gates.mul s s
-
-def circuit (Leaf : F) (Path : List F) (Root : F) : Circuit Unit := do
-  let mut h := Leaf
-  for i in goRange 0 (Int64.ofNat Path.length) do
-    h ← hash2 h (Path[i.toInt.toNat]!)
-    h ← MiMC h (Path[i.toInt.toNat]!)
-  let sum := Gates.add h (1 : F)
-  Gates.eq sum Root
-
-end MerkleChain
+end CopyBuiltin

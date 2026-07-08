@@ -3,7 +3,9 @@ import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 
-namespace MerkleChain
+namespace Opaque
+
+noncomputable section
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 abbrev F := ZMod Order
@@ -51,20 +53,18 @@ def toBinary (a : F) (n : Nat) : Circuit (List F) := fun k =>
 
 end Gates
 
-axiom MiMC_pred : F → F → F → Prop
-def MiMC (a : F) (b : F) : Circuit F := fun k =>
-  ∃ out, MiMC_pred a b out ∧ k out
+axiom PubKey : Type
+axiom PubKey_inhabited : Inhabited PubKey
+attribute [instance] PubKey_inhabited
 
-def hash2 (a : F) (b : F) : Circuit F := do
-  let s := Gates.add a b
-  return Gates.mul s s
+axiom keyDigest_pred : PubKey → F → Prop
+def keyDigest (pk : PubKey) : Circuit F := fun k =>
+  ∃ out, keyDigest_pred pk out ∧ k out
 
-def circuit (Leaf : F) (Path : List F) (Root : F) : Circuit Unit := do
-  let mut h := Leaf
-  for i in goRange 0 (Int64.ofNat Path.length) do
-    h ← hash2 h (Path[i.toInt.toNat]!)
-    h ← MiMC h (Path[i.toInt.toNat]!)
-  let sum := Gates.add h (1 : F)
-  Gates.eq sum Root
+def circuit (Pub : PubKey) (Sum : F) : Circuit Unit := do
+  let d ← keyDigest Pub
+  Gates.eq d Sum
 
-end MerkleChain
+end
+
+end Opaque

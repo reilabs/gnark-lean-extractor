@@ -1,4 +1,5 @@
 import Mathlib.Data.ZMod.Basic
+import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 

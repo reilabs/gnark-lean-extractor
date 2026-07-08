@@ -14,7 +14,8 @@ import (
 // arithmetic semantics — this checks that everything else (the Circuit
 // monad, do-notation, goRange loops, Int64 usage, list indexing) elaborates.
 func leanStub(out string) string {
-	out = strings.Replace(out, "import Mathlib.Data.ZMod.Basic\n\n", "", 1)
+	out = strings.Replace(out, "import Mathlib.Data.ZMod.Basic\n", "", 1)
+	out = strings.Replace(out, "import Mathlib.FieldTheory.Finite.Basic\n\n", "", 1)
 	out = strings.Replace(out, "def Order : ℕ", "def Order : Nat", 1)
 	out = strings.Replace(out,
 		`abbrev F := ZMod Order

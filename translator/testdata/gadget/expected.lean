@@ -3,7 +3,7 @@ import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 
-namespace MerkleChain
+namespace Gadget
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 abbrev F := ZMod Order
@@ -51,20 +51,33 @@ def toBinary (a : F) (n : Nat) : Circuit (List F) := fun k =>
 
 end Gates
 
-axiom MiMC_pred : F → F → F → Prop
-def MiMC (a : F) (b : F) : Circuit F := fun k =>
-  ∃ out, MiMC_pred a b out ∧ k out
+structure SumGadget where
+  A : F
+  B : F
+  deriving Inhabited
 
-def hash2 (a : F) (b : F) : Circuit F := do
-  let s := Gates.add a b
-  return Gates.mul s s
+structure AssertBoolGadget where
+  X : F
+  deriving Inhabited
 
-def circuit (Leaf : F) (Path : List F) (Root : F) : Circuit Unit := do
-  let mut h := Leaf
-  for i in goRange 0 (Int64.ofNat Path.length) do
-    h ← hash2 h (Path[i.toInt.toNat]!)
-    h ← MiMC h (Path[i.toInt.toNat]!)
-  let sum := Gates.add h (1 : F)
-  Gates.eq sum Root
+structure PairGadget where
+  X : F
+  deriving Inhabited
 
-end MerkleChain
+def SumGadget.DefineGadget (g : SumGadget) : Circuit F := do
+  return Gates.add g.A g.B
+
+def AssertBoolGadget.DefineGadget (g : AssertBoolGadget) : Circuit (List F) := do
+  Gates.isBool g.X
+  return []
+
+def PairGadget.DefineGadget (g : PairGadget) : Circuit (List F) := do
+  return [g.X, (Gates.mul g.X g.X)]
+
+def circuit (A : F) (B : F) : Circuit Unit := do
+  let s ← ({ A := A, B := B : SumGadget }).DefineGadget
+  let _ ← ({ X := A : AssertBoolGadget }).DefineGadget
+  let pair ← ({ X := B : PairGadget }).DefineGadget
+  Gates.eq s (pair[0]!)
+
+end Gadget

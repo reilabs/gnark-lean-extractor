@@ -38,6 +38,9 @@ type Config struct {
 	// as an axiom `<Name>_pred : ... → Prop` relating inputs to outputs,
 	// wrapped in a monadic definition.
 	Blackboxes map[string]string
+	// OpaqueTypes maps fully-qualified Go type names ("pkg/path.Type") to
+	// Lean type names.
+	OpaqueTypes map[string]string
 }
 
 type translateError struct {
@@ -56,9 +59,13 @@ type translator struct {
 	cfg Config
 	pkg *packages.Package
 
-	defs      []string
-	axioms    []string
-	axiomSeen map[string]bool
+	defs   []string
+	axioms []string
+	// axiomSeen maps a requested blackbox name (from Config.Blackboxes) to
+	// the actual name emitted after uniqueName resolution. Non-empty means
+	// the axiom has been emitted; subsequent calls with the same request
+	// return the same actual name.
+	axiomSeen map[string]string
 	funcNames map[*types.Func]string
 	inFlight  map[*types.Func]bool
 	usedNames map[string]bool
@@ -72,6 +79,18 @@ type translator struct {
 	// function that returns its own parameter). Binding such a result to a
 	// different variable would create a second name for the same backing.
 	aliasReturns map[*types.Func]map[int]bool
+	// Lean `structure` declarations for every Go struct types reachable from the circuit.
+	structs []string
+	// structNames maps a Go named struct type to its sanitized Lean name.
+	structNames map[*types.Named]string
+	// structsSeen guards emission — populated on first sighting of a struct
+	// so recursive classify calls terminate.
+	structsSeen map[*types.Named]bool
+	// opaqueSeen guards `axiom X : Type` emission for Config.OpaqueTypes.
+	opaqueSeen map[string]bool
+	// pkgVars maps a package-level Var object to its already-emitted Lean
+	// name.
+	pkgVars map[*types.Var]string
 }
 
 // Translate loads the Go package in cfg.Dir and translates the Define method
@@ -109,23 +128,33 @@ func Translate(cfg Config) (out string, err error) {
 	t := &translator{
 		cfg:          cfg,
 		pkg:          pkg,
-		axiomSeen:    map[string]bool{},
+		axiomSeen:    map[string]string{},
 		funcNames:    map[*types.Func]string{},
 		inFlight:     map[*types.Func]bool{},
 		usedNames:    map[string]bool{},
 		dirtyParams:  map[*types.Func]map[int]bool{},
 		aliasReturns: map[*types.Func]map[int]bool{},
+		structNames:  map[*types.Named]string{},
+		structsSeen:  map[*types.Named]bool{},
+		opaqueSeen:   map[string]bool{},
+		pkgVars:      map[*types.Var]string{},
 	}
 	for _, r := range []string{
 		"circuit", "Gates", "F", "Order", "Circuit", "Int64", "goRange",
 	} {
 		t.usedNames[r] = true
 	}
+	// Reserve the outer namespace name too.
+	t.usedNames[cfg.Namespace] = true
 
 	circuitDef := t.translateDefine()
 
 	var b strings.Builder
 	b.WriteString(t.prelude())
+	for _, s := range t.structs {
+		b.WriteString("\n\n")
+		b.WriteString(s)
+	}
 	for _, a := range t.axioms {
 		b.WriteString("\n\n")
 		b.WriteString(a)
@@ -136,6 +165,15 @@ func Translate(cfg Config) (out string, err error) {
 	}
 	b.WriteString("\n\n")
 	b.WriteString(circuitDef)
+	// When the circuit references an opaque type, wrap the whole body in a
+	// noncomputable section.
+	if len(t.opaqueSeen) > 0 {
+		b.WriteString(fmt.Sprintf("\n\nend %s\n", cfg.Namespace))
+		out := strings.Replace(b.String(), "namespace "+cfg.Namespace,
+			"namespace "+cfg.Namespace+"\n\nnoncomputable section", 1)
+		out = strings.Replace(out, "end "+cfg.Namespace, "end\n\nend "+cfg.Namespace, 1)
+		return out, nil
+	}
 	b.WriteString(fmt.Sprintf("\n\nend %s\n", cfg.Namespace))
 	return b.String(), nil
 }
@@ -144,83 +182,16 @@ func (t *translator) errf(pos token.Pos, format string, args ...any) {
 	panic(translateError{t.pkg.Fset.Position(pos), fmt.Sprintf(format, args...)})
 }
 
-// kind is the translator's type universe: Go integers (modelled bit-exactly
-// as Int64 on the Lean side) and (nested lists of) field elements.
-type kind struct {
-	goInt bool
-	depth int // 0 = F, 1 = List F, 2 = List (List F), ...
-}
-
-func (k kind) leanType() string {
-	if k.goInt {
-		return "Int64"
-	}
-	s := "F"
-	for i := 0; i < k.depth; i++ {
-		if s == "F" {
-			s = "List F"
-		} else {
-			s = "List (" + s + ")"
-		}
-	}
-	return s
-}
-
-// leanTypeParen renders the type parenthesized when needed as an argument of
-// `Circuit`.
-func (k kind) leanTypeParen() string {
-	s := k.leanType()
-	if strings.Contains(s, " ") {
-		return "(" + s + ")"
-	}
-	return s
-}
-
-func (k kind) elem() kind { return kind{depth: k.depth - 1} }
-
-func gnarkNamed(typ types.Type, name string) bool {
-	named, ok := typ.(*types.Named)
-	if !ok {
-		return false
-	}
-	obj := named.Obj()
-	return obj.Name() == name && obj.Pkg() != nil &&
-		obj.Pkg().Path() == "github.com/consensys/gnark/frontend"
-}
-
-func isVariable(typ types.Type) bool { return gnarkNamed(typ, "Variable") }
-func isAPI(typ types.Type) bool      { return gnarkNamed(typ, "API") }
-
-func (t *translator) classify(typ types.Type, pos token.Pos) kind {
-	if isVariable(typ) {
-		return kind{}
-	}
-	switch u := typ.Underlying().(type) {
-	case *types.Basic:
-		if u.Info()&types.IsInteger != 0 {
-			return kind{goInt: true}
-		}
-	case *types.Slice:
-		e := t.classify(u.Elem(), pos)
-		if !e.goInt {
-			return kind{depth: e.depth + 1}
-		}
-	case *types.Array:
-		e := t.classify(u.Elem(), pos)
-		if !e.goInt {
-			return kind{depth: e.depth + 1}
-		}
-	}
-	t.errf(pos, "unsupported type %s (expected frontend.Variable, integers, or slices/arrays of Variable)", typ)
-	return kind{}
-}
-
 var leanReserved = map[string]bool{
 	"let": true, "fun": true, "do": true, "if": true, "then": true,
 	"else": true, "for": true, "in": true, "mut": true, "return": true,
 	"pure": true, "match": true, "with": true, "end": true, "def": true,
 	"axiom": true, "namespace": true, "open": true, "k": true, "out": true,
 	"F": true, "Order": true, "Gates": true, "Circuit": true, "circuit": true,
+	"public": true, "private": true, "protected": true, "section": true,
+	"variable": true, "instance": true, "structure": true, "class": true,
+	"theorem": true, "lemma": true, "example": true, "import": true,
+	"where": true, "extends": true, "deriving": true,
 }
 
 func sanitize(name string) string {
@@ -264,7 +235,7 @@ func (t *translator) findFuncDecl(fn *types.Func) *ast.FuncDecl {
 	for _, file := range t.pkg.Syntax {
 		for _, decl := range file.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
-			if ok && fd.Recv == nil && t.pkg.TypesInfo.Defs[fd.Name] == fn {
+			if ok && t.pkg.TypesInfo.Defs[fd.Name] == fn {
 				return fd
 			}
 		}
@@ -397,7 +368,12 @@ func (t *translator) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramOb
 	// local is safe and only parameter names and returned calls matter.
 	if fn != nil {
 		sig := fn.Type().(*types.Signature)
-		if sig.Results().Len() == 1 && t.classify(sig.Results().At(0).Type(), fn.Pos()).depth > 0 {
+		results, _ := stripTrailingError(sig.Results())
+		// Interface{} returns can't be classified structurally — the concrete return type is inferred
+		// separately in translateFunc. Skip alias analysis in that case:
+		// gadgets don't return references to slice params.
+		if results.Len() == 1 && !isEmptyInterface(results.At(0).Type()) &&
+			t.classify(results.At(0).Type(), fn.Pos()).depth > 0 {
 			ret := map[int]bool{}
 			ast.Inspect(body, func(n ast.Node) bool {
 				rs, ok := n.(*ast.ReturnStmt)
@@ -498,30 +474,38 @@ func (t *translator) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramOb
 	})
 }
 
-func (t *translator) newFuncTr() *funcTr {
-	return &funcTr{
-		t:      t,
-		indent: 1,
-		names:  map[types.Object]string{},
-		muts:   map[types.Object]bool{},
+func (t *translator) newFuncBody() *funcBody {
+	b := &funcBody{
+		t:       t,
+		indent:  1,
+		names:   map[types.Object]string{},
+		muts:    map[types.Object]bool{},
+		errVars: map[types.Object]bool{},
 	}
+	b.ec = &exprCtx{
+		t:           t,
+		resolveObj:  b.resolveObj,
+		isAPI:       b.isAPI,
+		liftMonadic: b.liftMonadic,
+	}
+	return b
 }
 
 // translateDefine translates the circuit's Define method into `def circuit`.
 // Struct fields become Lean parameters.
 func (t *translator) translateDefine() string {
 	fd := t.findDefine()
-	f := t.newFuncTr()
-	f.isMain = true
+	b := t.newFuncBody()
+	b.isMain = true
 
 	if names := fd.Recv.List[0].Names; len(names) > 0 {
-		f.recv = t.pkg.TypesInfo.Defs[names[0]]
+		b.recv = t.pkg.TypesInfo.Defs[names[0]]
 	}
 	params := fd.Type.Params.List
 	if len(params) != 1 || len(params[0].Names) != 1 || !isAPI(t.pkg.TypesInfo.TypeOf(params[0].Type)) {
 		t.errf(fd.Pos(), "Define must take a single frontend.API parameter")
 	}
-	f.api = t.pkg.TypesInfo.Defs[params[0].Names[0]]
+	b.api = t.pkg.TypesInfo.Defs[params[0].Names[0]]
 
 	obj := t.pkg.Types.Scope().Lookup(t.cfg.Circuit)
 	if obj == nil {
@@ -536,15 +520,15 @@ func (t *translator) translateDefine() string {
 		fld := st.Field(i)
 		k := t.classify(fld.Type(), fld.Pos())
 		name := sanitize(fld.Name())
-		f.names[fld] = name
-		binders = append(binders, fmt.Sprintf("(%s : %s)", name, k.leanType()))
+		b.names[fld] = name
+		binders = append(binders, fmt.Sprintf("(%s : %s)", name, t.leanType(k)))
 	}
 
-	f.scanMut(fd.Body)
-	f.block(fd.Body.List, false, nil)
-	t.analyzeEffects(nil, fd.Body, []types.Object{f.api})
+	b.scanMut(fd.Body)
+	b.block(fd.Body.List, false, nil)
+	t.analyzeEffects(nil, fd.Body, []types.Object{b.api})
 	return fmt.Sprintf("def circuit %s : Circuit Unit := do\n%s",
-		strings.Join(binders, " "), strings.Join(f.lines, "\n"))
+		strings.Join(binders, " "), strings.Join(b.lines, "\n"))
 }
 
 // translateFunc translates a package-local helper function on demand and
@@ -566,128 +550,158 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 	}
 
 	t.inFlight[fn] = true
-	f := t.newFuncTr()
+	b := t.newFuncBody()
 
 	var binders []string
 	var paramObjs []types.Object
+
+	// Method receiver: prepend a `(self : Recv)` binder, register the
+	// receiver ident so the body may refer to it, and remember the named
+	// struct so the def gets namespace-qualified below. Pointer receivers
+	// are erased — the translation is value-semantic, so any receiver-side
+	// mutation would surface as a rejected field write elsewhere.
+	var recvNamed *types.Named
+	if fd.Recv != nil {
+		recvType := t.pkg.TypesInfo.TypeOf(fd.Recv.List[0].Type)
+		rk := t.classify(recvType, fd.Recv.Pos())
+		if rk.named == nil || rk.depth != 0 {
+			t.errf(fd.Recv.Pos(), "unsupported receiver type for %s", fn.Name())
+		}
+		recvNamed = rk.named
+		recvName := "self"
+		if names := fd.Recv.List[0].Names; len(names) > 0 && names[0].Name != "_" {
+			recvName = sanitize(names[0].Name)
+			obj := t.pkg.TypesInfo.Defs[names[0]]
+			b.names[obj] = recvName
+		}
+		binders = append(binders, fmt.Sprintf("(%s : %s)", recvName, t.leanType(rk)))
+	}
+
 	for _, field := range fd.Type.Params.List {
 		typ := t.pkg.TypesInfo.TypeOf(field.Type)
 		for _, nameId := range field.Names {
 			obj := t.pkg.TypesInfo.Defs[nameId]
 			paramObjs = append(paramObjs, obj)
 			if isAPI(typ) {
-				f.api = obj
+				b.api = obj
 				continue
 			}
 			k := t.classify(typ, field.Pos())
 			name := sanitize(nameId.Name)
-			f.names[obj] = name
-			binders = append(binders, fmt.Sprintf("(%s : %s)", name, k.leanType()))
+			b.names[obj] = name
+			binders = append(binders, fmt.Sprintf("(%s : %s)", name, t.leanType(k)))
 		}
 	}
 
 	resType := "Unit"
-	if n := sig.Results().Len(); n > 0 {
+	results, droppedErr := stripTrailingError(sig.Results())
+	b.hasErrResult = droppedErr
+	if n := results.Len(); n > 0 {
 		kinds := make([]kind, n)
 		parts := make([]string, n)
 		for i := 0; i < n; i++ {
-			kinds[i] = t.classify(sig.Results().At(i).Type(), fd.Pos())
-			parts[i] = kinds[i].leanType()
+			rt := results.At(i).Type()
+			// The abstractor's `DefineGadget` convention declares its
+			// return as `interface{}`; classify the actual return
+			// expression's type instead.
+			if isEmptyInterface(rt) && n == 1 {
+				actual := findReturnExprType(fd.Body, t.pkg.TypesInfo)
+				if actual == nil {
+					t.errf(fd.Pos(), "cannot infer return type of %s (empty-interface signature and no return expression)", fn.Name())
+				}
+				rt = actual
+			}
+			kinds[i] = t.classify(rt, fd.Pos())
+			parts[i] = t.leanType(kinds[i])
 		}
-		f.result = kinds
+		b.result = kinds
 		if n == 1 {
-			resType = kinds[0].leanTypeParen()
+			resType = t.leanTypeParen(kinds[0])
 		} else {
 			resType = "(" + strings.Join(parts, " × ") + ")"
 		}
 	}
 
-	f.scanMut(fd.Body)
+	// Named return values (`func f() (x, y T)`): the body treats them as
+	// zero-initialized mutable locals, and a bare `return` returns their
+	// current values. Register them so the body can reference and assign
+	// to them; the prologue below emits their initial bindings.
+	var namedReturns []string
+	if fd.Type.Results != nil {
+		var idx int
+		for _, field := range fd.Type.Results.List {
+			for _, nameId := range field.Names {
+				if nameId.Name == "_" || idx >= len(b.result) {
+					idx++
+					continue
+				}
+				obj := t.pkg.TypesInfo.Defs[nameId]
+				name := sanitize(nameId.Name)
+				b.names[obj] = name
+				b.muts[obj] = true
+				namedReturns = append(namedReturns, name)
+				idx++
+			}
+		}
+		if len(namedReturns) > 0 {
+			b.namedReturns = namedReturns
+		}
+	}
+
+	b.scanMut(fd.Body)
 	// Parameters reassigned in the body get shadowed by a mutable binding.
 	var mutParams []string
 	for _, field := range fd.Type.Params.List {
 		for _, nameId := range field.Names {
 			obj := t.pkg.TypesInfo.Defs[nameId]
-			if name, ok := f.names[obj]; ok && f.muts[obj] {
+			if name, ok := b.names[obj]; ok && b.muts[obj] {
 				mutParams = append(mutParams, name)
 			}
 		}
 	}
 	var prologue func()
-	if len(mutParams) > 0 {
+	if len(mutParams) > 0 || len(namedReturns) > 0 {
 		prologue = func() {
-			for _, n := range mutParams {
-				f.emit(fmt.Sprintf("let mut %s := %s", n, n))
+			// Named returns bound as zero-initialised mut locals first —
+			// param shadows follow so any param that also carries a
+			// named-return name still refers to itself.
+			for i, n := range namedReturns {
+				zero := "(0 : F)"
+				if i < len(b.result) {
+					zero = b.t.zeroForKind(b.result[i])
+				}
+				b.emit(fmt.Sprintf("let mut %s := %s", n, zero))
 			}
-			f.last = lastLet
+			for _, n := range mutParams {
+				b.emit(fmt.Sprintf("let mut %s := %s", n, n))
+			}
+			b.last = lastLet
 		}
 	}
-	f.block(fd.Body.List, false, prologue)
+	b.block(fd.Body.List, false, prologue)
 	t.analyzeEffects(fn, fd.Body, paramObjs)
 
-	name := t.uniqueName(fn.Name())
+	var name string
+	if recvNamed != nil {
+		// Method: `def <StructName>.<MethodName>` — Lean namespace
+		// resolution lets call sites use `u.MethodName args` dot syntax.
+		name = t.structNames[recvNamed] + "." + fn.Name()
+		t.usedNames[name] = true
+	} else {
+		name = t.uniqueName(fn.Name())
+	}
 	t.funcNames[fn] = name
 	def := fmt.Sprintf("def %s %s : Circuit %s := do\n%s",
-		name, strings.Join(binders, " "), resType, strings.Join(f.lines, "\n"))
+		name, strings.Join(binders, " "), resType, strings.Join(b.lines, "\n"))
 	t.defs = append(t.defs, def)
 	delete(t.inFlight, fn)
 	return name
 }
 
-// ensureAxiom emits the axiomatized opaque predicate and monadic wrapper for
-// a blackboxed function.
-func (t *translator) ensureAxiom(leanName string, fn *types.Func, pos token.Pos) {
-	if t.axiomSeen[leanName] {
-		return
-	}
-	t.axiomSeen[leanName] = true
-	t.usedNames[leanName] = true
-	t.usedNames[leanName+"_pred"] = true
-
-	sig := fn.Type().(*types.Signature)
-	var binders, predArgTypes, argNames []string
-	for i := 0; i < sig.Params().Len(); i++ {
-		p := sig.Params().At(i)
-		if isAPI(p.Type()) {
-			continue
-		}
-		k := t.classify(p.Type(), pos)
-		name := sanitize(p.Name())
-		if name == "" || name == "_" {
-			name = fmt.Sprintf("x%d", i)
-		}
-		binders = append(binders, fmt.Sprintf("(%s : %s)", name, k.leanType()))
-		predArgTypes = append(predArgTypes, k.leanType())
-		argNames = append(argNames, name)
-	}
-
-	var res *kind
-	switch sig.Results().Len() {
-	case 0:
-	case 1:
-		k := t.classify(sig.Results().At(0).Type(), pos)
-		res = &k
-	default:
-		t.errf(pos, "blackbox %s: multiple return values are not supported", fn.Name())
-	}
-
-	var axiom, def string
-	if res == nil {
-		axiom = fmt.Sprintf("axiom %s_pred : %s → Prop", leanName, strings.Join(predArgTypes, " → "))
-		def = fmt.Sprintf("def %s %s : Circuit Unit := fun k =>\n  %s_pred %s ∧ k ()",
-			leanName, strings.Join(binders, " "), leanName, strings.Join(argNames, " "))
-	} else {
-		axiom = fmt.Sprintf("axiom %s_pred : %s → %s → Prop",
-			leanName, strings.Join(predArgTypes, " → "), res.leanType())
-		def = fmt.Sprintf("def %s %s : Circuit %s := fun k =>\n  ∃ out, %s_pred %s out ∧ k out",
-			leanName, strings.Join(binders, " "), res.leanTypeParen(), leanName, strings.Join(argNames, " "))
-	}
-	t.axioms = append(t.axioms, axiom+"\n"+def)
-}
-
 func (t *translator) prelude() string {
 	order := t.cfg.Field.ScalarField()
 	return fmt.Sprintf(`import Mathlib.Data.ZMod.Basic
+import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 

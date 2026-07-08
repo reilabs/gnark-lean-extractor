@@ -59,6 +59,7 @@ func TestRejections(t *testing.T) {
 		{"DirtyArg", "writes the elements"},
 		{"ReturnAlias", "result of id may alias xs"},
 		{"SameArg", "more than once"},
+		{"MapField", "unsupported type"},
 	}
 	for _, c := range cases {
 		c := c
@@ -112,4 +113,106 @@ func TestBitsCircuit(t *testing.T) {
 		t.Fatal(err)
 	}
 	checkGolden(t, filepath.Join("testdata", "bits", "expected.lean"), out)
+}
+
+func TestOpaqueCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/opaque",
+		Circuit: "Opaque",
+		Field:   ecc.BN254,
+		Blackboxes: map[string]string{
+			"github.com/reilabs/gnark-lean-extractor/v3/translator/testdata/opaque.keyDigest": "keyDigest",
+		},
+		OpaqueTypes: map[string]string{
+			"github.com/reilabs/gnark-lean-extractor/v3/translator/testdata/opaque/inner.Wrap": "PubKey",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "opaque", "expected.lean"), out)
+}
+
+func TestGadgetCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/gadget",
+		Circuit: "Gadget",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "gadget", "expected.lean"), out)
+}
+
+func TestPtrsCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/ptrs",
+		Circuit: "Ptrs",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "ptrs", "expected.lean"), out)
+}
+
+func TestSliceExprCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/sliceexpr",
+		Circuit: "SliceExpr",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "sliceexpr", "expected.lean"), out)
+}
+
+func TestCopyBuiltinCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/copybuiltin",
+		Circuit: "CopyBuiltin",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "copybuiltin", "expected.lean"), out)
+}
+
+func TestBytesCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/bytes",
+		Circuit: "Bytes",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "bytes", "expected.lean"), out)
+}
+
+func TestNestedCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/nested",
+		Circuit: "Nested",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "nested", "expected.lean"), out)
+}
+
+func TestErrretCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/errret",
+		Circuit: "Errret",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "errret", "expected.lean"), out)
 }

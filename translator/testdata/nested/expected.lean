@@ -3,7 +3,7 @@ import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 
-namespace MerkleChain
+namespace Nested
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 abbrev F := ZMod Order
@@ -51,20 +51,26 @@ def toBinary (a : F) (n : Nat) : Circuit (List F) := fun k =>
 
 end Gates
 
-axiom MiMC_pred : F → F → F → Prop
-def MiMC (a : F) (b : F) : Circuit F := fun k =>
-  ∃ out, MiMC_pred a b out ∧ k out
+structure Public where
+  Root : F
+  deriving Inhabited
 
-def hash2 (a : F) (b : F) : Circuit F := do
-  let s := Gates.add a b
-  return Gates.mul s s
+structure Utxo where
+  Owner : F
+  Asset : F
+  deriving Inhabited
 
-def circuit (Leaf : F) (Path : List F) (Root : F) : Circuit Unit := do
-  let mut h := Leaf
-  for i in goRange 0 (Int64.ofNat Path.length) do
-    h ← hash2 h (Path[i.toInt.toNat]!)
-    h ← MiMC h (Path[i.toInt.toNat]!)
-  let sum := Gates.add h (1 : F)
-  Gates.eq sum Root
+def Utxo.Hash (u : Utxo) : Circuit F := do
+  return Gates.add u.Owner u.Asset
 
-end MerkleChain
+def bumpAsset (u : Utxo) : Circuit Utxo := do
+  return ({ Owner := u.Owner, Asset := (Gates.add u.Asset (1 : F)) : Utxo })
+
+def circuit (Public : Public) (Inputs : List Utxo) (Extra : F) : Circuit Unit := do
+  Gates.eq Public.Root Extra
+  for i in goRange 0 2 do
+    let h ← (Inputs[i.toInt.toNat]!).Hash
+    let u ← bumpAsset (Inputs[i.toInt.toNat]!)
+    Gates.eq h u.Asset
+
+end Nested

@@ -103,3 +103,38 @@ func (c *DirtyArg) Define(api frontend.API) error {
 	api.AssertIsBoolean(c.Xs[0])
 	return nil
 }
+
+// Ping is a struct with a supported field, used by FieldWrite below.
+type Ping struct {
+	A frontend.Variable
+}
+
+// bumpField mutates a field of its struct parameter — invisible to Go
+// callers (Ping is passed by value) but the field-write form itself is not
+// supported by the translator, so this must be rejected on translation.
+func bumpField(api frontend.API, p Ping) frontend.Variable {
+	p.A = api.Add(p.A, 1)
+	return p.A
+}
+
+// FieldWrite triggers the rejection of struct field writes.
+type FieldWrite struct {
+	P Ping
+}
+
+func (c *FieldWrite) Define(api frontend.API) error {
+	x := bumpField(api, c.P)
+	api.AssertIsBoolean(x)
+	return nil
+}
+
+// MapField holds a Go map — an unsupported field type that classify must
+// reject cleanly rather than silently accepting.
+type MapField struct {
+	Table map[string]frontend.Variable
+}
+
+func (c *MapField) Define(api frontend.API) error {
+	api.AssertIsBoolean(c.Table["x"])
+	return nil
+}
