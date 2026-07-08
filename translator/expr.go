@@ -568,7 +568,7 @@ func (t *translator) synthesizeCircuitLiteral(pos token.Pos) string {
 		t.errf(pos, "circuit type %s is not a struct", t.cfg.Circuit)
 	}
 	t.classify(named, pos)
-	structName := t.structNames[named]
+	structName := t.structReg.name(named)
 	parts := make([]string, st.NumFields())
 	for i := 0; i < st.NumFields(); i++ {
 		fld := st.Field(i)
@@ -583,7 +583,7 @@ func (t *translator) synthesizeCircuitLiteral(pos token.Pos) string {
 // (`Utxo{Owner: a}`) forms are supported; mixed forms match Go's rejection.
 func (c *exprCtx) structLit(e *ast.CompositeLit, k kind) string {
 	st := k.named.Underlying().(*types.Struct)
-	typName := c.t.structNames[k.named]
+	typName := c.t.structReg.name(k.named)
 	if len(e.Elts) == 0 {
 		return fmt.Sprintf("({ : %s })", typName)
 	}

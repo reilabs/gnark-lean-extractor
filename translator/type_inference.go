@@ -33,7 +33,7 @@ func (t *translator) leanType(k kind) string {
 	case k.opaque != "":
 		s = k.opaque
 	case k.named != nil:
-		s = t.structNames[k.named]
+		s = t.structReg.name(k.named)
 	default:
 		s = "F"
 	}
@@ -149,7 +149,7 @@ func (t *translator) classify(typ types.Type, pos token.Pos) kind {
 	// structs the caller has explicitly declined to model. Emit an
 	// `axiom X : Type` and return an opaque kind.
 	if leanName, ok := t.opaqueLeanName(typ); ok {
-		t.registerOpaque(leanName)
+		t.opaqueReg.register(leanName)
 		return kind{opaque: leanName}
 	}
 	// Non-opaque aliases: recurse into the target so downstream sees the
@@ -215,42 +215,22 @@ func (t *translator) opaqueLeanName(typ types.Type) (string, bool) {
 	return name, ok
 }
 
-// registerOpaque emits an `axiom <Name> : Type` and a companion Inhabited
-// instance the first time an opaque type is used. Placed in `t.structs` so
-// it precedes axioms that may reference the opaque type.
-func (t *translator) registerOpaque(leanName string) {
-	if t.opaqueSeen[leanName] {
-		return
-	}
-	t.opaqueSeen[leanName] = true
-	t.usedNames[leanName] = true
-	inhName := leanName + "_inhabited"
-	t.usedNames[inhName] = true
-	decl := fmt.Sprintf("axiom %s : Type\naxiom %s : Inhabited %s\nattribute [instance] %s",
-		leanName, inhName, leanName, inhName)
-	t.structs = append(t.structs, decl)
-}
-
 // registerStruct emits a Lean `structure` declaration for a Go named struct
 // (once per type). Called from classify on first sighting. Field types are
-// classified recursively — inner structs get emitted before the outer, giving
-// topological order.
+// classified recursively via the structRegistry, which reserves the outer
+// struct's name BEFORE running this build callback so inner structs get
+// emitted first (topological order) while outer references resolve.
 func (t *translator) registerStruct(named *types.Named, st *types.Struct, pos token.Pos) {
-	if t.structsSeen[named] {
-		return
-	}
-	t.structsSeen[named] = true
-	name := t.uniqueName(named.Obj().Name())
-	t.structNames[named] = name
-	fieldLines := make([]string, st.NumFields())
-	for i := 0; i < st.NumFields(); i++ {
-		fld := st.Field(i)
-		if fld.Embedded() {
-			t.errf(pos, "embedded fields are not supported (in struct %s)", named.Obj().Name())
+	t.structReg.getOrRegister(named, func(name string) string {
+		fieldLines := make([]string, st.NumFields())
+		for i := 0; i < st.NumFields(); i++ {
+			fld := st.Field(i)
+			if fld.Embedded() {
+				t.errf(pos, "embedded fields are not supported (in struct %s)", named.Obj().Name())
+			}
+			k := t.classify(fld.Type(), fld.Pos())
+			fieldLines[i] = fmt.Sprintf("  %s : %s", sanitize(fld.Name()), t.leanType(k))
 		}
-		k := t.classify(fld.Type(), fld.Pos())
-		fieldLines[i] = fmt.Sprintf("  %s : %s", sanitize(fld.Name()), t.leanType(k))
-	}
-	decl := fmt.Sprintf("structure %s where\n%s\n  deriving Inhabited", name, strings.Join(fieldLines, "\n"))
-	t.structs = append(t.structs, decl)
+		return fmt.Sprintf("structure %s where\n%s\n  deriving Inhabited", name, strings.Join(fieldLines, "\n"))
+	})
 }

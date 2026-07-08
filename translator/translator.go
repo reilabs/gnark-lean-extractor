@@ -59,16 +59,25 @@ type translator struct {
 	cfg Config
 	pkg *packages.Package
 
-	defs   []string
-	axioms []string
-	// axiomSeen maps a requested blackbox name (from Config.Blackboxes) to
-	// the actual name emitted after uniqueName resolution. Non-empty means
-	// the axiom has been emitted; subsequent calls with the same request
-	// return the same actual name.
-	axiomSeen map[string]string
-	funcNames map[*types.Func]string
-	inFlight  map[*types.Func]bool
-	usedNames map[string]bool
+	// Three output sections, in the order they appear in the emitted Lean
+	// file. Registries below append into these directly through emit
+	// callbacks wired at construction.
+	structs []string // struct decls + opaque-type axioms
+	axioms  []string // blackbox / gadget axioms
+	defs    []string // package-var defs + translated helper funcs
+
+	// Registries wrap the memoization + emission for each kind of top-level
+	// decl. See registries.go for the shared invariants (reserve-before-
+	// emit for recursion safety, etc.).
+	alloc     *nameAlloc
+	structReg *structRegistry
+	opaqueReg *opaqueRegistry
+	axiomReg  *axiomRegistry
+	pkgVarReg *pkgVarRegistry
+	funcReg   *funcRegistry
+
+	// Per-function analysis summaries, populated by analyzeEffects.
+	//
 	// dirtyParams records, per translated function, the signature indices of
 	// slice parameters whose backing array the function (transitively)
 	// writes. Go callers observe such writes through aliasing; the
@@ -79,18 +88,6 @@ type translator struct {
 	// function that returns its own parameter). Binding such a result to a
 	// different variable would create a second name for the same backing.
 	aliasReturns map[*types.Func]map[int]bool
-	// Lean `structure` declarations for every Go struct types reachable from the circuit.
-	structs []string
-	// structNames maps a Go named struct type to its sanitized Lean name.
-	structNames map[*types.Named]string
-	// structsSeen guards emission — populated on first sighting of a struct
-	// so recursive classify calls terminate.
-	structsSeen map[*types.Named]bool
-	// opaqueSeen guards `axiom X : Type` emission for Config.OpaqueTypes.
-	opaqueSeen map[string]bool
-	// pkgVars maps a package-level Var object to its already-emitted Lean
-	// name.
-	pkgVars map[*types.Var]string
 }
 
 // Translate loads the Go package in cfg.Dir and translates the Define method
@@ -128,24 +125,27 @@ func Translate(cfg Config) (out string, err error) {
 	t := &translator{
 		cfg:          cfg,
 		pkg:          pkg,
-		axiomSeen:    map[string]string{},
-		funcNames:    map[*types.Func]string{},
-		inFlight:     map[*types.Func]bool{},
-		usedNames:    map[string]bool{},
+		alloc:        newNameAlloc(),
+		funcReg:      newFuncRegistry(),
 		dirtyParams:  map[*types.Func]map[int]bool{},
 		aliasReturns: map[*types.Func]map[int]bool{},
-		structNames:  map[*types.Named]string{},
-		structsSeen:  map[*types.Named]bool{},
-		opaqueSeen:   map[string]bool{},
-		pkgVars:      map[*types.Var]string{},
 	}
+	// Registries share the "structs" section for struct decls and opaque
+	// axioms; funcs and package vars share the "defs" section.
+	pushStruct := func(d string) { t.structs = append(t.structs, d) }
+	pushAxiom := func(d string) { t.axioms = append(t.axioms, d) }
+	pushDef := func(d string) { t.defs = append(t.defs, d) }
+	t.structReg = newStructRegistry(t.alloc, pushStruct)
+	t.opaqueReg = newOpaqueRegistry(t.alloc, pushStruct)
+	t.axiomReg = newAxiomRegistry(t.alloc, pushAxiom)
+	t.pkgVarReg = newPkgVarRegistry(t.alloc, pushDef)
 	for _, r := range []string{
 		"circuit", "Gates", "F", "Order", "Circuit", "Int64", "goRange",
 	} {
-		t.usedNames[r] = true
+		t.alloc.reserveExact(r)
 	}
 	// Reserve the outer namespace name too.
-	t.usedNames[cfg.Namespace] = true
+	t.alloc.reserveExact(cfg.Namespace)
 
 	circuitDef := t.translateDefine()
 
@@ -167,7 +167,7 @@ func Translate(cfg Config) (out string, err error) {
 	b.WriteString(circuitDef)
 	// When the circuit references an opaque type, wrap the whole body in a
 	// noncomputable section.
-	if len(t.opaqueSeen) > 0 {
+	if t.opaqueReg.any() {
 		b.WriteString(fmt.Sprintf("\n\nend %s\n", cfg.Namespace))
 		out := strings.Replace(b.String(), "namespace "+cfg.Namespace,
 			"namespace "+cfg.Namespace+"\n\nnoncomputable section", 1)
@@ -198,16 +198,6 @@ func sanitize(name string) string {
 	if leanReserved[name] {
 		return name + "_"
 	}
-	return name
-}
-
-// uniqueName reserves a top-level Lean definition name.
-func (t *translator) uniqueName(base string) string {
-	name := sanitize(base)
-	for i := 1; t.usedNames[name]; i++ {
-		name = fmt.Sprintf("%s_%d", sanitize(base), i)
-	}
-	t.usedNames[name] = true
 	return name
 }
 
@@ -534,10 +524,11 @@ func (t *translator) translateDefine() string {
 // translateFunc translates a package-local helper function on demand and
 // returns its Lean name. Callees are emitted before callers.
 func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
-	if name, ok := t.funcNames[fn]; ok {
-		return name
+	slot := t.funcReg.slot(fn)
+	if slot.done {
+		return slot.leanName
 	}
-	if t.inFlight[fn] {
+	if slot.inFlight {
 		t.errf(pos, "recursive functions are not supported: %s", fn.Name())
 	}
 	fd := t.findFuncDecl(fn)
@@ -549,7 +540,7 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 		t.errf(fd.Pos(), "variadic functions are not supported: %s", fn.Name())
 	}
 
-	t.inFlight[fn] = true
+	slot.inFlight = true
 	b := t.newFuncBody()
 
 	var binders []string
@@ -685,16 +676,17 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 	if recvNamed != nil {
 		// Method: `def <StructName>.<MethodName>` — Lean namespace
 		// resolution lets call sites use `u.MethodName args` dot syntax.
-		name = t.structNames[recvNamed] + "." + fn.Name()
-		t.usedNames[name] = true
+		name = t.structReg.name(recvNamed) + "." + fn.Name()
+		t.alloc.reserveExact(name)
 	} else {
-		name = t.uniqueName(fn.Name())
+		name = t.alloc.fresh(fn.Name())
 	}
-	t.funcNames[fn] = name
+	slot.leanName = name
+	slot.done = true
+	slot.inFlight = false
 	def := fmt.Sprintf("def %s %s : Circuit %s := do\n%s",
 		name, strings.Join(binders, " "), resType, strings.Join(b.lines, "\n"))
 	t.defs = append(t.defs, def)
-	delete(t.inFlight, fn)
 	return name
 }
 

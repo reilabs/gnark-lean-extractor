@@ -27,39 +27,32 @@ func (t *translator) pkgInitCtx() *exprCtx {
 // initializer through the main expression walker. Errors via t.errf if the
 // var has no initializer or its shape is not foldable.
 func (t *translator) resolvePkgVar(v *types.Var) string {
-	if name, ok := t.pkgVars[v]; ok {
-		return name
-	}
-
-	var spec *ast.ValueSpec
-	var idx int
-	for _, file := range t.pkg.Syntax {
-		for _, decl := range file.Decls {
-			gd, ok := decl.(*ast.GenDecl)
-			if !ok || gd.Tok != token.VAR {
-				continue
-			}
-			for _, s := range gd.Specs {
-				vs := s.(*ast.ValueSpec)
-				for i, name := range vs.Names {
-					if t.pkg.TypesInfo.Defs[name] == v {
-						spec, idx = vs, i
+	return t.pkgVarReg.getOrRegister(v, func(name string) string {
+		var spec *ast.ValueSpec
+		var idx int
+		for _, file := range t.pkg.Syntax {
+			for _, decl := range file.Decls {
+				gd, ok := decl.(*ast.GenDecl)
+				if !ok || gd.Tok != token.VAR {
+					continue
+				}
+				for _, s := range gd.Specs {
+					vs := s.(*ast.ValueSpec)
+					for i, nm := range vs.Names {
+						if t.pkg.TypesInfo.Defs[nm] == v {
+							spec, idx = vs, i
+						}
 					}
 				}
 			}
 		}
-	}
-	if spec == nil || len(spec.Values) <= idx {
-		t.errf(v.Pos(), "package var %s has no initializer to fold", v.Name())
-	}
+		if spec == nil || len(spec.Values) <= idx {
+			t.errf(v.Pos(), "package var %s has no initializer to fold", v.Name())
+		}
 
-	init := spec.Values[idx]
-	k := t.classify(v.Type(), v.Pos())
-	str, _ := t.pkgInitCtx().exprTop(init, k)
-
-	name := t.uniqueName(v.Name())
-	t.pkgVars[v] = name
-	t.defs = append(t.defs,
-		fmt.Sprintf("def %s : %s := %s", name, t.leanType(k), str))
-	return name
+		init := spec.Values[idx]
+		k := t.classify(v.Type(), v.Pos())
+		str, _ := t.pkgInitCtx().exprTop(init, k)
+		return fmt.Sprintf("def %s : %s := %s", name, t.leanType(k), str)
+	})
 }

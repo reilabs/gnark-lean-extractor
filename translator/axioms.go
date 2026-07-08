@@ -12,18 +12,20 @@ import (
 // return kind (F, List F, …) comes from the abstractor variant at the call
 // site: Call → F, CallVoid → Unit, Call1/2/3 → List{1,2,3} F.
 func (t *translator) ensureGadgetAxiom(defineFn *types.Func, gadgetType *types.Named, wrapperName string, pos token.Pos) {
-	if _, done := t.funcNames[defineFn]; done {
+	slot := t.funcReg.slot(defineFn)
+	if slot.done {
 		return
 	}
-	structName := t.structNames[gadgetType]
+	structName := t.structReg.name(gadgetType)
 	if structName == "" {
 		t.errf(pos, "gadget %s has no registered structure", gadgetType.Obj().Name())
 	}
 	predName := structName + "_DefineGadget_pred"
 	defName := structName + ".DefineGadget"
-	t.usedNames[predName] = true
-	t.usedNames[defName] = true
-	t.funcNames[defineFn] = defName
+	t.alloc.reserveExact(predName)
+	t.alloc.reserveExact(defName)
+	slot.leanName = defName
+	slot.done = true
 
 	var axiom, def string
 	if wrapperName == "CallVoid" {
@@ -53,81 +55,76 @@ func (t *translator) ensureGadgetAxiom(defineFn *types.Func, gadgetType *types.N
 
 // ensureAxiom emits an axiom + wrapper for a blackboxed function. Returns
 // the emitted Lean name — which may differ from the requested one if a
-// collision (e.g. with the outer namespace) forced uniqName to rename it.
+// collision (e.g. with the outer namespace) forced a suffix.
 func (t *translator) ensureAxiom(leanName string, fn *types.Func, pos token.Pos) string {
-	if actual, ok := t.axiomSeen[leanName]; ok {
-		return actual
-	}
-	actual := t.uniqueName(leanName)
-	t.axiomSeen[leanName] = actual
-	t.usedNames[actual+"_pred"] = true
-	// From here on, use `actual` rather than the requested leanName.
-	leanName = actual
+	return t.axiomReg.getOrRegister(leanName, func(actual string) string {
+		// Also reserve the companion predicate name so it can't be shadowed.
+		t.alloc.reserveExact(actual + "_pred")
 
-	sig := fn.Type().(*types.Signature)
-	var binders, predArgTypes, argNames []string
-	for i := 0; i < sig.Params().Len(); i++ {
-		p := sig.Params().At(i)
-		if isAPI(p.Type()) {
-			continue
+		sig := fn.Type().(*types.Signature)
+		var binders, predArgTypes, argNames []string
+		for i := 0; i < sig.Params().Len(); i++ {
+			p := sig.Params().At(i)
+			if isAPI(p.Type()) {
+				continue
+			}
+			k := t.classify(p.Type(), pos)
+			name := sanitize(p.Name())
+			if name == "" || name == "_" {
+				name = fmt.Sprintf("x%d", i)
+			}
+			binders = append(binders, fmt.Sprintf("(%s : %s)", name, t.leanType(k)))
+			predArgTypes = append(predArgTypes, t.leanType(k))
+			argNames = append(argNames, name)
 		}
-		k := t.classify(p.Type(), pos)
-		name := sanitize(p.Name())
-		if name == "" || name == "_" {
-			name = fmt.Sprintf("x%d", i)
+
+		results, _ := stripTrailingError(sig.Results())
+		resKinds := make([]kind, results.Len())
+		resTypes := make([]string, results.Len())
+		for i := range resKinds {
+			resKinds[i] = t.classify(results.At(i).Type(), pos)
+			resTypes[i] = t.leanType(resKinds[i])
 		}
-		binders = append(binders, fmt.Sprintf("(%s : %s)", name, t.leanType(k)))
-		predArgTypes = append(predArgTypes, t.leanType(k))
-		argNames = append(argNames, name)
-	}
 
-	results, _ := stripTrailingError(sig.Results())
-	resKinds := make([]kind, results.Len())
-	resTypes := make([]string, results.Len())
-	for i := range resKinds {
-		resKinds[i] = t.classify(results.At(i).Type(), pos)
-		resTypes[i] = t.leanType(resKinds[i])
-	}
-
-	// Predicate signatures collapse the arrow chain: if there are no
-	// inputs we emit `Prop` (or `<Out> → Prop`) directly, without a
-	// leading arrow.
-	inSig := ""
-	if len(predArgTypes) > 0 {
-		inSig = strings.Join(predArgTypes, " → ") + " → "
-	}
-	binderSig := strings.Join(binders, " ")
-	if binderSig != "" {
-		binderSig = " " + binderSig
-	}
-	inArgs := strings.Join(argNames, " ")
-	if inArgs != "" {
-		inArgs = " " + inArgs
-	}
-
-	var axiom, def string
-	switch len(resKinds) {
-	case 0:
-		axiom = fmt.Sprintf("axiom %s_pred : %sProp", leanName, inSig)
-		def = fmt.Sprintf("def %s%s : Circuit Unit := fun k =>\n  %s_pred%s ∧ k ()",
-			leanName, binderSig, leanName, inArgs)
-	case 1:
-		axiom = fmt.Sprintf("axiom %s_pred : %s%s → Prop", leanName, inSig, resTypes[0])
-		def = fmt.Sprintf("def %s%s : Circuit %s := fun k =>\n  ∃ out, %s_pred%s out ∧ k out",
-			leanName, binderSig, t.leanTypeParen(resKinds[0]), leanName, inArgs)
-	default:
-		outNames := make([]string, len(resKinds))
-		for i := range outNames {
-			outNames[i] = fmt.Sprintf("out%d", i+1)
+		// Predicate signatures collapse the arrow chain: if there are no
+		// inputs we emit `Prop` (or `<Out> → Prop`) directly, without a
+		// leading arrow.
+		inSig := ""
+		if len(predArgTypes) > 0 {
+			inSig = strings.Join(predArgTypes, " → ") + " → "
 		}
-		axiom = fmt.Sprintf("axiom %s_pred : %s%s → Prop",
-			leanName, inSig, strings.Join(resTypes, " → "))
-		callArgs := inArgs + " " + strings.Join(outNames, " ")
-		def = fmt.Sprintf("def %s%s : Circuit (%s) := fun k =>\n  ∃ %s, %s_pred%s ∧ k (%s)",
-			leanName, binderSig, strings.Join(resTypes, " × "),
-			strings.Join(outNames, " "), leanName, callArgs,
-			strings.Join(outNames, ", "))
-	}
-	t.axioms = append(t.axioms, axiom+"\n"+def)
-	return leanName
+		binderSig := strings.Join(binders, " ")
+		if binderSig != "" {
+			binderSig = " " + binderSig
+		}
+		inArgs := strings.Join(argNames, " ")
+		if inArgs != "" {
+			inArgs = " " + inArgs
+		}
+
+		var axiom, def string
+		switch len(resKinds) {
+		case 0:
+			axiom = fmt.Sprintf("axiom %s_pred : %sProp", actual, inSig)
+			def = fmt.Sprintf("def %s%s : Circuit Unit := fun k =>\n  %s_pred%s ∧ k ()",
+				actual, binderSig, actual, inArgs)
+		case 1:
+			axiom = fmt.Sprintf("axiom %s_pred : %s%s → Prop", actual, inSig, resTypes[0])
+			def = fmt.Sprintf("def %s%s : Circuit %s := fun k =>\n  ∃ out, %s_pred%s out ∧ k out",
+				actual, binderSig, t.leanTypeParen(resKinds[0]), actual, inArgs)
+		default:
+			outNames := make([]string, len(resKinds))
+			for i := range outNames {
+				outNames[i] = fmt.Sprintf("out%d", i+1)
+			}
+			axiom = fmt.Sprintf("axiom %s_pred : %s%s → Prop",
+				actual, inSig, strings.Join(resTypes, " → "))
+			callArgs := inArgs + " " + strings.Join(outNames, " ")
+			def = fmt.Sprintf("def %s%s : Circuit (%s) := fun k =>\n  ∃ %s, %s_pred%s ∧ k (%s)",
+				actual, binderSig, strings.Join(resTypes, " × "),
+				strings.Join(outNames, " "), actual, callArgs,
+				strings.Join(outNames, ", "))
+		}
+		return axiom + "\n" + def
+	})
 }
