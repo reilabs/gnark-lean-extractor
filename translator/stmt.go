@@ -8,22 +8,18 @@ import (
 	"strings"
 )
 
-// block translates a statement list as one do-sequence, appending `pure ()`
-// when the sequence would otherwise end in a binding. Loop and if bodies may
-// end in a reassignment of a `mut` variable; function bodies may not.
-func (b *funcBody) block(stmts []ast.Stmt, allowReassignEnd bool, prologue func()) {
-	saved := b.last
-	b.last = lastNone
+// block walks a top-level statement list into the current block level
+// (b.stmts) with the given prologue running first. Loop / if bodies use
+// collectBlock instead, which splices into a fresh child block. Terminator
+// emission (`pure ()` when the last statement isn't a valid trailing form)
+// happens later in renderBlock, which sees the final tree — not here.
+func (b *funcBody) block(stmts []ast.Stmt, prologue func()) {
 	if prologue != nil {
 		prologue()
 	}
 	for _, s := range stmts {
 		b.stmt(s)
 	}
-	if b.last == lastNone || b.last == lastLet || (b.last == lastReassign && !allowReassignEnd) {
-		b.emit("pure ()")
-	}
-	b.last = saved
 }
 
 func (b *funcBody) stmt(s ast.Stmt) {
@@ -76,12 +72,11 @@ func (b *funcBody) declStmt(s *ast.DeclStmt) {
 			obj := b.info().Defs[id]
 			k := b.t.classify(typ, id.Pos())
 			name := b.bind(obj)
-			mut := ""
-			if b.muts[obj] {
-				mut = "mut "
-			}
-			b.emit(fmt.Sprintf("let %s%s := %s", mut, name, b.t.zeroValueOf(k, typ, id.Pos())))
-			b.last = lastLet
+			b.push(letBind{
+				name: name,
+				rhs:  b.t.zeroValueOf(k, typ, id.Pos()),
+				mut:  b.muts[obj],
+			})
 		}
 	}
 }
@@ -113,22 +108,13 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 		k := b.t.classify(obj.Type(), id.Pos())
 		b.aliasGuard(k, rhs)
 		str, monadic := b.ec.exprTop(rhs, k)
-		mut := ""
-		if b.muts[obj] {
-			mut = "mut "
-		}
 		// Ascribe Int64 bindings so bare numerals don't default to Nat.
 		ascr := ""
 		if k.goInt {
 			ascr = " : Int64"
 		}
 		name := b.bind(obj)
-		if monadic {
-			b.emit(fmt.Sprintf("let %s%s%s ← %s", mut, name, ascr, str))
-		} else {
-			b.emit(fmt.Sprintf("let %s%s%s := %s", mut, name, ascr, str))
-		}
-		b.last = lastLet
+		b.push(letBind{name: name, ascr: ascr, rhs: str, monadic: monadic, mut: b.muts[obj]})
 	case token.ASSIGN:
 		switch lhs := s.Lhs[0].(type) {
 		case *ast.Ident:
@@ -144,12 +130,7 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 			k := b.t.classify(obj.Type(), lhs.Pos())
 			b.aliasGuard(k, rhs)
 			str, monadic := b.ec.exprTop(rhs, k)
-			if monadic {
-				b.emit(fmt.Sprintf("%s ← %s", name, str))
-			} else {
-				b.emit(fmt.Sprintf("%s := %s", name, str))
-			}
-			b.last = lastReassign
+			b.push(reassign{name: name, rhs: str, monadic: monadic})
 		case *ast.IndexExpr:
 			id, ok := lhs.X.(*ast.Ident)
 			if !ok {
@@ -163,8 +144,7 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 			bk := b.t.kindOf(lhs.X)
 			idx := b.ec.natAtom(lhs.Index)
 			val := b.ec.atom(rhs, bk.elem())
-			b.emit(fmt.Sprintf("%s := %s.set %s %s", name, name, idx, val))
-			b.last = lastReassign
+			b.push(indexSet{name: name, idx: idx, val: val})
 		case *ast.SelectorExpr:
 			// Struct field write on a local: rebind the local via Lean's
 			// structure-update syntax `{ x with Field := v }`.
@@ -180,8 +160,7 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 			fieldName := sanitize(lhs.Sel.Name)
 			fk := b.t.kindOf(lhs)
 			val := b.ec.atom(rhs, fk)
-			b.emit(fmt.Sprintf("%s := { %s with %s := %s }", name, name, fieldName, val))
-			b.last = lastReassign
+			b.push(fieldSet{name: name, field: fieldName, val: val})
 		default:
 			b.t.errf(s.Pos(), "unsupported assignment target %T", lhs)
 		}
@@ -199,7 +178,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 	if s.Tok != token.DEFINE && s.Tok != token.ASSIGN {
 		b.t.errf(s.Pos(), "unsupported multi-assignment operator %s", s.Tok)
 	}
-	reassign := s.Tok == token.ASSIGN
+	isReassign := s.Tok == token.ASSIGN
 	fn, _ := b.t.callee(call).(*types.Func)
 	if fn == nil {
 		b.t.errf(s.Pos(), "multi-assignment from a call requires a static callee")
@@ -234,8 +213,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 	}
 
 	if n == 0 {
-		b.emit("let _ ← " + str)
-		b.last = lastLet
+		b.push(discardBind{rhs: str, monadic: true})
 		return
 	}
 
@@ -256,7 +234,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 		if id.Name == "_" {
 			return "_", true
 		}
-		if reassign {
+		if isReassign {
 			obj := b.info().Uses[id]
 			existing, ok := b.names[obj]
 			if !ok {
@@ -274,26 +252,23 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 	if n == 1 {
 		name, blank := bindPos(0)
 		if blank {
-			b.emit("let _ ← " + str)
-			b.last = lastLet
+			b.push(discardBind{rhs: str, monadic: true})
 			return
 		}
-		if reassign {
-			b.emit(fmt.Sprintf("%s ← %s", name, str))
-			b.last = lastReassign
+		if isReassign {
+			b.push(reassign{name: name, rhs: str, monadic: true})
 			return
 		}
 		k := b.t.classify(results.At(0).Type(), s.Pos())
-		mut := ""
+		mut := false
 		if obj := b.info().Defs[s.Lhs[0].(*ast.Ident)]; obj != nil && b.muts[obj] {
-			mut = "mut "
+			mut = true
 		}
 		ascr := ""
 		if k.goInt {
 			ascr = " : Int64"
 		}
-		b.emit(fmt.Sprintf("let %s%s%s ← %s", mut, name, ascr, str))
-		b.last = lastLet
+		b.push(letBind{name: name, ascr: ascr, rhs: str, monadic: true, mut: mut})
 		return
 	}
 
@@ -302,7 +277,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 		// materialise each position as an ident-set or a slice `.set`.
 		tmp := fmt.Sprintf("t_%d", b.tmp)
 		b.tmp++
-		b.emit(fmt.Sprintf("let %s ← %s", tmp, str))
+		var parts []tuplePart
 		for i, lhs := range s.Lhs {
 			switch l := lhs.(type) {
 			case *ast.Ident:
@@ -313,11 +288,11 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 				if blank {
 					continue
 				}
-				if reassign {
-					b.emit(fmt.Sprintf("%s := %s.%d", name, tmp, i+1))
-				} else {
-					b.emit(fmt.Sprintf("let %s := %s.%d", name, tmp, i+1))
+				pk := tuplePartAssign
+				if !isReassign {
+					pk = tuplePartLet
 				}
+				parts = append(parts, tuplePart{kind: pk, name: name, tupleIx: i + 1})
 			case *ast.IndexExpr:
 				id, ok := l.X.(*ast.Ident)
 				if !ok {
@@ -328,43 +303,42 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 				if !ok {
 					b.t.errf(l.Pos(), "assignment to unknown variable %s", id.Name)
 				}
-				b.emit(fmt.Sprintf("%s := %s.set %s (%s.%d)", name, name, b.ec.natAtom(l.Index), tmp, i+1))
+				parts = append(parts, tuplePart{
+					kind:    tuplePartIndex,
+					name:    name,
+					tupleIx: i + 1,
+					idxExpr: b.ec.natAtom(l.Index),
+				})
 			default:
 				b.t.errf(lhs.Pos(), "unsupported multi-assign target %T", lhs)
 			}
 		}
-		b.last = lastReassign
+		b.push(tupleAssign{tmp: tmp, rhs: str, parts: parts})
 		return
 	}
-	parts := make([]string, n)
+	names := make([]string, n)
 	for i := 0; i < n; i++ {
-		parts[i], _ = bindPos(i)
+		names[i], _ = bindPos(i)
 	}
-	if reassign {
+	if isReassign {
 		// Lean has no built-in `(x, y) ← m` destructure for reassignment;
 		// bind the tuple to a fresh name and pull each field out.
 		tmp := fmt.Sprintf("t_%d", b.tmp)
 		b.tmp++
-		b.emit(fmt.Sprintf("let %s ← %s", tmp, str))
-		for i, p := range parts {
-			b.emit(fmt.Sprintf("%s := %s.%d", p, tmp, i+1))
+		parts := make([]tuplePart, n)
+		for i, name := range names {
+			parts[i] = tuplePart{kind: tuplePartAssign, name: name, tupleIx: i + 1}
 		}
-		b.last = lastReassign
+		b.push(tupleAssign{tmp: tmp, rhs: str, parts: parts})
 		return
 	}
-	b.emit(fmt.Sprintf("let (%s) ← %s", strings.Join(parts, ", "), str))
-	b.last = lastLet
+	b.push(tupleLet{names: names, rhs: str})
 }
 
 // discard translates `_ = e` / `_ := e`.
 func (b *funcBody) discard(rhs ast.Expr) {
 	str, monadic := b.discardExpr(rhs)
-	if monadic {
-		b.emit("let _ ← " + str)
-	} else {
-		b.emit("let _ := " + str)
-	}
-	b.last = lastLet
+	b.push(discardBind{rhs: str, monadic: monadic})
 }
 
 func (b *funcBody) exprStmt(s *ast.ExprStmt) {
@@ -382,14 +356,9 @@ func (b *funcBody) exprStmt(s *ast.ExprStmt) {
 	str, monadic := b.discardExpr(call)
 	switch {
 	case monadic && b.callIsUnit(call):
-		b.emit(str)
-		b.last = lastExpr
-	case monadic:
-		b.emit("let _ ← " + str)
-		b.last = lastLet
+		b.push(bareExpr{rhs: str})
 	default:
-		b.emit("let _ := " + str)
-		b.last = lastLet
+		b.push(discardBind{rhs: str, monadic: monadic})
 	}
 }
 
@@ -411,7 +380,7 @@ func (b *funcBody) emitCopy(call *ast.CallExpr) {
 		if !ok {
 			b.t.errf(dst.Pos(), "copy target is not a bound variable")
 		}
-		b.emit(fmt.Sprintf("%s := %s.take %s.length", name, src, name))
+		b.push(copyFull{name: name, src: src})
 	case *ast.SliceExpr:
 		if dst.Slice3 {
 			b.t.errf(dst.Pos(), "three-index slice in copy target")
@@ -433,12 +402,10 @@ func (b *funcBody) emitCopy(call *ast.CallExpr) {
 		if dst.High != nil {
 			hi = b.ec.natAtom(dst.High)
 		}
-		b.emit(fmt.Sprintf("%s := %s.take %s ++ %s.take (%s - %s) ++ %s.drop %s",
-			name, name, lo, src, hi, lo, name, hi))
+		b.push(copySlice{name: name, lo: lo, hi: hi, src: src})
 	default:
 		b.t.errf(dstExpr.Pos(), "copy destination must be a variable or a slice expression")
 	}
-	b.last = lastReassign
 }
 
 // callIsUnit reports whether a call produces no value (assertions, void
@@ -491,11 +458,8 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 	lo := b.ec.atom(init.Rhs[0], kind{goInt: true})
 	hi := b.ec.atom(cond.Y, kind{goInt: true})
 	name := b.bind(obj)
-	b.emit(fmt.Sprintf("for %s in goRange %s %s do", name, lo, hi))
-	b.indent++
-	b.block(s.Body.List, true, nil)
-	b.indent--
-	b.last = lastExpr
+	body := b.collectBlock(s.Body.List, true, nil)
+	b.push(forLoop{name: name, lo: lo, hi: hi, body: body})
 }
 
 func (b *funcBody) rangeStmt(s *ast.RangeStmt) {
@@ -533,28 +497,20 @@ func (b *funcBody) rangeStmt(s *ast.RangeStmt) {
 	if keyId.Name == "_" && valId != nil {
 		// `for _, v := range xs` iterates directly.
 		vname := b.bind(b.info().Defs[valId])
-		b.emit(fmt.Sprintf("for %s in %s do", vname, xs))
-		b.indent++
-		b.block(s.Body.List, true, nil)
-		b.indent--
-		b.last = lastExpr
+		body := b.collectBlock(s.Body.List, true, nil)
+		b.push(forSlice{val: vname, xs: xs, body: body})
 		return
 	}
 
 	iname := b.bind(b.info().Defs[keyId])
-	b.emit(fmt.Sprintf("for %s in goRange 0 (Int64.ofNat %s.length) do", iname, xs))
-	b.indent++
-	var prologue func()
+	// forIndexed's renderer prepends `let <val> := <xs>[<idx>.toInt.toNat]!`
+	// to the body when val is non-empty, so we just bind the name here.
+	vname := ""
 	if valId != nil {
-		vname := b.bind(b.info().Defs[valId])
-		prologue = func() {
-			b.emit(fmt.Sprintf("let %s := %s[%s.toInt.toNat]!", vname, xs, iname))
-			b.last = lastLet
-		}
+		vname = b.bind(b.info().Defs[valId])
 	}
-	b.block(s.Body.List, true, prologue)
-	b.indent--
-	b.last = lastExpr
+	body := b.collectBlock(s.Body.List, true, nil)
+	b.push(forIndexed{idx: iname, val: vname, xs: xs, body: body})
 }
 
 // isErrCheck matches the `if err != nil { return ... }` guard that surrounds
@@ -671,33 +627,24 @@ func (b *funcBody) ifStmt(s *ast.IfStmt) {
 		}
 		if takesAPI {
 			str, monadic := b.discardExpr(call)
-			if monadic {
-				b.emit("let _ ← " + str)
-			} else {
-				b.emit("let _ := " + str)
-			}
-			b.last = lastLet
+			b.push(discardBind{rhs: str, monadic: monadic})
 		}
 		return
 	}
 	if s.Init != nil {
 		b.t.errf(s.Pos(), "if statements with init clauses are not supported")
 	}
-	b.emit(fmt.Sprintf("if %s then", b.cond(s.Cond)))
-	b.indent++
-	b.block(s.Body.List, true, nil)
-	b.indent--
+	then := b.collectBlock(s.Body.List, true, nil)
+	var els *block
 	if s.Else != nil {
-		els, ok := s.Else.(*ast.BlockStmt)
+		elsBlock, ok := s.Else.(*ast.BlockStmt)
 		if !ok {
 			b.t.errf(s.Else.Pos(), "else-if chains are not supported")
 		}
-		b.emit("else")
-		b.indent++
-		b.block(els.List, true, nil)
-		b.indent--
+		e := b.collectBlock(elsBlock.List, true, nil)
+		els = &e
 	}
-	b.last = lastExpr
+	b.push(ifStmt{cond: b.cond(s.Cond), then: then, els: els})
 }
 
 // cond translates a Go-level (size/config) boolean expression into a Lean
@@ -762,15 +709,13 @@ func (b *funcBody) returnStmt(s *ast.ReturnStmt) {
 		// named return values in their current state.
 		if len(b.namedReturns) > 0 {
 			if len(b.namedReturns) == 1 {
-				b.emit("return " + b.namedReturns[0])
+				b.push(ret{val: b.namedReturns[0]})
 			} else {
-				b.emit("return (" + strings.Join(b.namedReturns, ", ") + ")")
+				b.push(ret{val: "(" + strings.Join(b.namedReturns, ", ") + ")"})
 			}
-			b.last = lastExpr
 			return
 		}
-		b.emit("pure ()")
-		b.last = lastExpr
+		b.push(ret{unit: true})
 		return
 	}
 	results := s.Results
@@ -781,8 +726,7 @@ func (b *funcBody) returnStmt(s *ast.ReturnStmt) {
 	}
 	if len(b.result) == 0 {
 		if len(results) == 0 {
-			b.emit("pure ()")
-			b.last = lastExpr
+			b.push(ret{unit: true})
 			return
 		}
 		b.t.errf(s.Pos(), "unexpected return value")
@@ -792,18 +736,12 @@ func (b *funcBody) returnStmt(s *ast.ReturnStmt) {
 	}
 	if len(b.result) == 1 {
 		str, monadic := b.ec.exprTop(results[0], b.result[0])
-		if monadic {
-			b.emit(str)
-		} else {
-			b.emit("return " + str)
-		}
-		b.last = lastExpr
+		b.push(ret{val: str, monadic: monadic})
 		return
 	}
 	parts := make([]string, len(results))
 	for i, r := range results {
 		parts[i] = b.ec.atom(r, b.result[i])
 	}
-	b.emit("return (" + strings.Join(parts, ", ") + ")")
-	b.last = lastExpr
+	b.push(ret{val: "(" + strings.Join(parts, ", ") + ")"})
 }

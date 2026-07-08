@@ -467,7 +467,6 @@ func (t *translator) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramOb
 func (t *translator) newFuncBody() *funcBody {
 	b := &funcBody{
 		t:       t,
-		indent:  1,
 		names:   map[types.Object]string{},
 		muts:    map[types.Object]bool{},
 		errVars: map[types.Object]bool{},
@@ -515,10 +514,11 @@ func (t *translator) translateDefine() string {
 	}
 
 	b.scanMut(fd.Body)
-	b.block(fd.Body.List, false, nil)
+	b.block(fd.Body.List, nil)
 	t.analyzeEffects(nil, fd.Body, []types.Object{b.api})
+	body := renderBlock(block{stmts: b.stmts, allowReassignEnd: false}, 1)
 	return fmt.Sprintf("def circuit %s : Circuit Unit := do\n%s",
-		strings.Join(binders, " "), strings.Join(b.lines, "\n"))
+		strings.Join(binders, " "), strings.Join(body, "\n"))
 }
 
 // translateFunc translates a package-local helper function on demand and
@@ -661,15 +661,14 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 				if i < len(b.result) {
 					zero = b.t.zeroForKind(b.result[i])
 				}
-				b.emit(fmt.Sprintf("let mut %s := %s", n, zero))
+				b.push(letBind{name: n, rhs: zero, mut: true})
 			}
 			for _, n := range mutParams {
-				b.emit(fmt.Sprintf("let mut %s := %s", n, n))
+				b.push(letBind{name: n, rhs: n, mut: true})
 			}
-			b.last = lastLet
 		}
 	}
-	b.block(fd.Body.List, false, prologue)
+	b.block(fd.Body.List, prologue)
 	t.analyzeEffects(fn, fd.Body, paramObjs)
 
 	var name string
@@ -684,8 +683,9 @@ func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
 	slot.leanName = name
 	slot.done = true
 	slot.inFlight = false
+	body := renderBlock(block{stmts: b.stmts, allowReassignEnd: false}, 1)
 	def := fmt.Sprintf("def %s %s : Circuit %s := do\n%s",
-		name, strings.Join(binders, " "), resType, strings.Join(b.lines, "\n"))
+		name, strings.Join(binders, " "), resType, strings.Join(body, "\n"))
 	t.defs = append(t.defs, def)
 	return name
 }

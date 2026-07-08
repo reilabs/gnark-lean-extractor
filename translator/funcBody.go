@@ -5,16 +5,17 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
-	"strings"
 )
 
-// funcBody translates the body of a single Go function into lines of a Lean
-// do-block.
+// funcBody translates the body of a single Go function into a []stmt IR
+// tree (see ir.go). The tree is rendered to Lean do-block text in one
+// separate pass — see renderBlock. The walker itself carries no line
+// buffer, no running indent, no last-statement cursor: those decisions are
+// structural properties of the finished tree, not of the walk order.
 type funcBody struct {
-	t      *translator
-	ec     *exprCtx
-	lines  []string
-	indent int
+	t     *translator
+	ec    *exprCtx
+	stmts []stmt // stmts accumulated at the *current* block level
 
 	names map[types.Object]string // Go object -> Lean name
 	muts  map[types.Object]bool   // objects reassigned after definition
@@ -36,21 +37,30 @@ type funcBody struct {
 	// current bindings as a tuple.
 	namedReturns []string
 
-	tmp  int
-	last lastStmt
+	tmp int
 }
 
-type lastStmt int
+// push appends s to whatever block level b is currently walking into.
+// Nested blocks (loop bodies, if branches) are collected via collectBlock
+// below, which temporarily rebinds b.stmts to a fresh slice.
+func (b *funcBody) push(s stmt) { b.stmts = append(b.stmts, s) }
 
-const (
-	lastNone     lastStmt = iota
-	lastLet               // `let x := ...` / `let x ← ...` — cannot end a do-block
-	lastReassign          // `x := ...` / `x ← ...` — valid at the end of loop/if bodies
-	lastExpr              // an expression — valid at the end of any do-block
-)
-
-func (b *funcBody) emit(s string) {
-	b.lines = append(b.lines, strings.Repeat("  ", b.indent)+s)
+// collectBlock walks stmts into a fresh []stmt without touching the outer
+// block, and returns them wrapped in a block value. Used to build loop /
+// if bodies. prologue, if non-nil, runs before the stmts walk (used for
+// named-return / mut-param bindings inserted at function-body entry).
+func (b *funcBody) collectBlock(stmts []ast.Stmt, allowReassignEnd bool, prologue func()) block {
+	saved := b.stmts
+	b.stmts = nil
+	if prologue != nil {
+		prologue()
+	}
+	for _, s := range stmts {
+		b.stmt(s)
+	}
+	inner := b.stmts
+	b.stmts = saved
+	return block{stmts: inner, allowReassignEnd: allowReassignEnd}
 }
 
 func (b *funcBody) info() *types.Info { return b.t.pkg.TypesInfo }
@@ -199,8 +209,7 @@ func (b *funcBody) isAPI(obj types.Object) bool {
 func (b *funcBody) liftMonadic(str string, _ token.Pos) string {
 	tmp := fmt.Sprintf("t_%d", b.tmp)
 	b.tmp++
-	b.emit(fmt.Sprintf("let %s ← %s", tmp, str))
-	b.last = lastLet
+	b.push(letBind{name: tmp, rhs: str, monadic: true})
 	return tmp
 }
 
