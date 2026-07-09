@@ -17,6 +17,14 @@ instance : Inhabited F := ⟨0⟩
 def goRange (lo hi : Int64) : List Int64 :=
   (List.range (hi.toInt - lo.toInt).toNat).map (fun k => lo + Int64.ofNat k)
 
+/-- Stride variant of goRange: values taken by
+    for i := lo; i < hi; i += step (empty when hi ≤ lo or step ≤ 0). -/
+def goRangeStep (lo hi step : Int64) : List Int64 :=
+  if step.toInt ≤ 0 then []
+  else
+    let n := ((hi.toInt - lo.toInt + step.toInt - 1) / step.toInt).toNat
+    (List.range n).map (fun k => lo + Int64.ofNat k * step)
+
 /-- The circuit-semantics monad: a continuation into Prop. -/
 def Circuit (α : Type) : Type := (α → Prop) → Prop
 

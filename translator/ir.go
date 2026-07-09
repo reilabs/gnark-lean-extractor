@@ -99,9 +99,10 @@ type copySlice struct{ name, lo, hi, src string }
 type bareExpr struct{ rhs string }
 
 // forLoop — `for <name> in goRange <lo> <hi> do <body>`.
+// If step is non-empty, uses `goRangeStep <lo> <hi> <step>` instead.
 type forLoop struct {
-	name, lo, hi string
-	body         block
+	name, lo, hi, step string
+	body               block
 }
 
 // forSlice — `for <val> in <xs> do <body>` (range with only the value).
@@ -228,7 +229,11 @@ func renderStmt(s stmt, indent int) []string {
 	case bareExpr:
 		return []string{pad + s.rhs}
 	case forLoop:
-		lines := []string{fmt.Sprintf("%sfor %s in goRange %s %s do", pad, s.name, s.lo, s.hi)}
+		header := fmt.Sprintf("%sfor %s in goRange %s %s do", pad, s.name, s.lo, s.hi)
+		if s.step != "" {
+			header = fmt.Sprintf("%sfor %s in goRangeStep %s %s %s do", pad, s.name, s.lo, s.hi, s.step)
+		}
+		lines := []string{header}
 		return append(lines, renderBlock(s.body, indent+1)...)
 	case forSlice:
 		lines := []string{fmt.Sprintf("%sfor %s in %s do", pad, s.val, s.xs)}

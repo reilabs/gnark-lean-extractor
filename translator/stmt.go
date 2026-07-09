@@ -435,7 +435,7 @@ func (b *funcBody) callIsUnit(call *ast.CallExpr) bool {
 func (b *funcBody) forStmt(s *ast.ForStmt) {
 	init, ok := s.Init.(*ast.AssignStmt)
 	if !ok || init.Tok != token.DEFINE || len(init.Lhs) != 1 {
-		b.errf(s.Pos(), "only `for i := lo; i < hi; i++` loops are supported")
+		b.errf(s.Pos(), "only `for i := lo; i < hi; i++` or `i += k` loops are supported")
 	}
 	id := init.Lhs[0].(*ast.Ident)
 	obj := b.info.Defs[id]
@@ -446,9 +446,28 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 	if cid, ok := unparen(cond.X).(*ast.Ident); !ok || b.info.Uses[cid] != obj {
 		b.errf(s.Pos(), "loop condition must test the loop variable")
 	}
-	post, ok := s.Post.(*ast.IncDecStmt)
-	if !ok || post.Tok != token.INC {
-		b.errf(s.Pos(), "only `i++` loop increments are supported")
+	// Post-clause: `i++` (stride 1) or `i += <expr>` (arbitrary stride).
+	// The stride variant walks the loop var via goRangeStep so runtime
+	// values can be used (e.g. `offset += bytesPerFE`).
+	var step string
+	switch post := s.Post.(type) {
+	case *ast.IncDecStmt:
+		if post.Tok != token.INC {
+			b.errf(s.Pos(), "only `i++` and `i += k` loop increments are supported")
+		}
+		if pid, ok := post.X.(*ast.Ident); !ok || b.info.Uses[pid] != obj {
+			b.errf(s.Pos(), "loop increment must update the loop variable")
+		}
+	case *ast.AssignStmt:
+		if post.Tok != token.ADD_ASSIGN || len(post.Lhs) != 1 || len(post.Rhs) != 1 {
+			b.errf(s.Pos(), "only `i++` and `i += k` loop increments are supported")
+		}
+		if pid, ok := post.Lhs[0].(*ast.Ident); !ok || b.info.Uses[pid] != obj {
+			b.errf(s.Pos(), "loop increment must update the loop variable")
+		}
+		step = b.atom(post.Rhs[0], kind{base: baseInt64})
+	default:
+		b.errf(s.Pos(), "only `i++` and `i += k` loop increments are supported")
 	}
 	// Go re-evaluates the bound every iteration; the translation evaluates it
 	// once at loop entry. Reject bodies that reassign what the bound reads.
@@ -459,7 +478,7 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 	hi := b.atom(cond.Y, kind{base: baseInt64})
 	name := b.bind(obj)
 	body := b.collectBlock(s.Body.List, true, nil)
-	b.push(forLoop{name: name, lo: lo, hi: hi, body: body})
+	b.push(forLoop{name: name, lo: lo, hi: hi, step: step, body: body})
 }
 
 func (b *funcBody) rangeStmt(s *ast.RangeStmt) {

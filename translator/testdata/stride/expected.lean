@@ -3,7 +3,7 @@ import Mathlib.FieldTheory.Finite.Basic
 
 set_option linter.unusedVariables false
 
-namespace Panic
+namespace Stride
 
 def Order : ℕ := 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 abbrev F := ZMod Order
@@ -63,14 +63,13 @@ def toBinary (a : F) (n : Nat) : Circuit (List F) := fun k =>
 
 end Gates
 
-def pointOrError (x : F) : Circuit F := do
-  return Gates.mul x x
+def circuit (Xs : List F) (Step : Int64) (R : F) : Circuit Unit := do
+  let mut sumEven := (0 : F)
+  for i in goRangeStep 0 (Int64.ofNat Xs.length) 2 do
+    sumEven := Gates.add sumEven (Xs[i.toInt.toNat]!)
+  let mut sumStride := (0 : F)
+  for i in goRangeStep 0 (Int64.ofNat Xs.length) Step do
+    sumStride := Gates.add sumStride (Xs[i.toInt.toNat]!)
+  Gates.eq (Gates.add sumEven sumStride) R
 
-def circuit (X : F) (K : Int64) (R : F) : Circuit Unit := do
-  if K > 8 then
-    let _ ← Circuit.panic
-    pure ()
-  let y ← pointOrError X
-  Gates.eq y R
-
-end Panic
+end Stride
