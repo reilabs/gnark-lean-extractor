@@ -63,12 +63,15 @@ def toBinary (a : F) (n : Nat) : Circuit (List F) := fun k =>
 
 end Gates
 
+def packageBigConst : Int := (42 : Int)
+
 def circuit (X : F) (K : Int64) (R : F) : Circuit Unit := do
   let coeffConst := (5 : Int)
   let coeffShift := (1 : Int) * 2 ^ K.toInt.toNat
   let coeffRsh := (1024 : Int) / 2 ^ K.toInt.toNat
   let coeffMix := (((Int64.shiftLeft (1 : Int64) K)).toInt)
-  let sum := Gates.add (Gates.mul X ((coeffConst) : F)) (Gates.add (Gates.add ((coeffShift) : F) ((coeffRsh) : F)) ((coeffMix) : F))
+  let coeffCopy := packageBigConst
+  let sum := Gates.add (Gates.mul X ((coeffConst) : F)) (Gates.add (Gates.add (Gates.add ((coeffShift) : F) ((coeffRsh) : F)) ((coeffMix) : F)) ((coeffCopy) : F))
   Gates.eq sum R
 
 end BigInt
