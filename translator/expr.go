@@ -175,6 +175,12 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 			return name, false
 		}
 		// Nested field access: translate the base and append `.Field`.
+		// Field access on an opaque-typed base is refused
+		if b.kindOf(e.X).base == baseOpaque {
+			b.errf(e.Pos(),
+				"field access %q on opaque type %s — the opaque type has no fields in Lean; blackbox the enclosing helper",
+				sel.Obj().Name(), b.leanType(b.kindOf(e.X)))
+		}
 		baseStr, monadic := b.exprBare(e.X, kind{})
 		if monadic {
 			b.errf(e.Pos(), "cannot select a field of a monadic expression")
