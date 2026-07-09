@@ -79,6 +79,41 @@ func TestRejections(t *testing.T) {
 	}
 }
 
+// TestOpaqueRejections checks the checks that fire when a Go expression
+// tries to interact with an opaque-typed value in a way that would produce
+// silently-wrong Lean.
+func TestOpaqueRejections(t *testing.T) {
+	opaques := map[string]string{
+		"github.com/reilabs/gnark-lean-extractor/v3/translator/testdata/badopaque.Foo": "FooOpaque",
+		"github.com/reilabs/gnark-lean-extractor/v3/translator/testdata/badopaque.Bar": "BarOpaque",
+	}
+	cases := []struct {
+		circuit string
+		wantErr string
+	}{
+		{"FieldOnOpaque", "field access"},
+		{"OpaqueToOpaque", "conversion between opaque types"},
+		{"OpaqueLiteral", "composite literal of opaque"},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.circuit, func(t *testing.T) {
+			_, err := translator.Translate(translator.Config{
+				Dir:         "testdata/badopaque",
+				Circuit:     c.circuit,
+				Field:       ecc.BN254,
+				OpaqueTypes: opaques,
+			})
+			if err == nil {
+				t.Fatalf("expected translation of %s to fail", c.circuit)
+			}
+			if !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("error for %s should mention %q, got: %v", c.circuit, c.wantErr, err)
+			}
+		})
+	}
+}
+
 func TestPoseidonMerkle(t *testing.T) {
 	out, err := translator.Translate(translator.Config{
 		Dir:     "testdata/poseidon",

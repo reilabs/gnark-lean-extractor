@@ -63,6 +63,20 @@ func (b *funcBody) ensureAxiom(leanName string, fn *types.Func, pos token.Pos) s
 
 		sig := fn.Type().(*types.Signature)
 		var binders, predArgTypes, argNames []string
+		// For methods, thread the receiver as the first positional param
+		// of the axiom. Without this, the receiver would be silently
+		// dropped — a real bug when the receiver is opaque (curve.M(x)
+		// on two different curves would produce identical axioms).
+		if recv := sig.Recv(); recv != nil {
+			k := b.classify(recv.Type(), pos)
+			name := sanitize(recv.Name())
+			if name == "" || name == "_" {
+				name = "self"
+			}
+			binders = append(binders, fmt.Sprintf("(%s : %s)", name, b.leanType(k)))
+			predArgTypes = append(predArgTypes, b.leanType(k))
+			argNames = append(argNames, name)
+		}
 		for i := 0; i < sig.Params().Len(); i++ {
 			p := sig.Params().At(i)
 			if isAPI(p.Type()) {

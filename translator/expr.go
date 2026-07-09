@@ -217,6 +217,11 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 		if k.base == baseStruct && k.depth == 0 {
 			return b.structLit(e, k), false
 		}
+		if k.base == baseOpaque && k.depth == 0 {
+			b.errf(e.Pos(),
+				"composite literal of opaque type %s — the opaque type has no fields in Lean; blackbox the enclosing helper",
+				b.leanType(k))
+		}
 		if k.base == baseInt64 || k.depth == 0 {
 			b.errf(e.Pos(), "unsupported composite literal type")
 		}
@@ -326,7 +331,20 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 			}
 			b.errf(e.Pos(), "only string-literal []byte conversions are supported")
 		}
-		return b.exprTop(e.Args[0], b.classify(tv.Type, e.Pos()))
+		// Reject conversions between two distinct opaque types — the
+		// "conversion" here is a no-op walk in Lean (there's no coercion
+		// between axiomatised types), so the target binding would carry
+		// the source's type and downstream uses would silently mistype.
+		tgt := b.classify(tv.Type, e.Pos())
+		if tgt.base == baseOpaque && tgt.depth == 0 {
+			src := b.kindOf(e.Args[0])
+			if src.base == baseOpaque && src.depth == 0 && src.opaque != tgt.opaque {
+				b.errf(e.Pos(),
+					"conversion between opaque types %s → %s has no Lean coercion; blackbox the enclosing helper",
+					b.leanType(src), b.leanType(tgt))
+			}
+		}
+		return b.exprTop(e.Args[0], tgt)
 	}
 
 	// Builtins.
@@ -417,7 +435,17 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 	}
 	if leanName, ok := b.cfg.Blackboxes[full]; ok {
 		actual := b.ensureAxiom(leanName, fn, e.Pos())
-		return actual + b.callArgs(e, fn), true
+		// For methods, thread the Go receiver as the axiom's first
+		// positional arg. ensureAxiom mirrors this by prepending a
+		// receiver-typed binder to the axiom's signature. Without this
+		// pair, blackboxed methods would silently drop their receiver.
+		var head string
+		if sig := fn.Type().(*types.Signature); sig.Recv() != nil {
+			if sel, ok := unparen(e.Fun).(*ast.SelectorExpr); ok {
+				head = " " + b.atom(sel.X, b.kindOf(sel.X))
+			}
+		}
+		return actual + head + b.callArgs(e, fn), true
 	}
 	if _, walkable := b.pkgs[fn.Pkg()]; walkable {
 		name := b.translateFunc(fn, e.Pos())
