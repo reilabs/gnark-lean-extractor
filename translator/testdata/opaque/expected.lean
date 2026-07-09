@@ -27,6 +27,10 @@ instance : Monad Circuit where
 /-- A circuit is satisfiable iff running it bottoms out in True. -/
 def Circuit.run {α : Type} (c : Circuit α) : Prop := c fun _ => True
 
+/-- Marks an unreachable code path — every continuation fails, so any
+    circuit that runs through here is unsatisfiable. -/
+def Circuit.panic : Circuit Unit := fun _ => False
+
 namespace Gates
 
 def add (a b : F) : F := a + b
