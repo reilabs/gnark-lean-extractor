@@ -327,6 +327,9 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 				mk := b.classify(b.info.TypeOf(e), e.Pos())
 				n := b.natAtom(e.Args[1])
 				return fmt.Sprintf("List.replicate %s %s", n, b.zero(mk.elem(), nil)), false
+			case "panic":
+				// Model panic as an unreachable Circuit
+				return "Circuit.panic", true
 			default:
 				b.errf(e.Pos(), "unsupported builtin %s", bi.Name())
 			}

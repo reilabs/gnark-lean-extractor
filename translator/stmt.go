@@ -513,9 +513,10 @@ func (b *funcBody) rangeStmt(s *ast.RangeStmt) {
 	b.push(forIndexed{idx: iname, val: vname, xs: xs, body: body})
 }
 
-// isErrCheck matches the `if err != nil { return ... }` guard that surrounds
-// a `v, err := f(...)` call to a `(T, error)` helper. The whole block is Go-
-// side plumbing — the translator drops it and continues on the success path.
+// isErrCheck matches the `if err != nil { return ... }` (or `panic(err)`)
+// guard that surrounds a `v, err := f(...)` call to a `(T, error)` helper.
+// The whole block is Go-side plumbing — the translator drops it and
+// continues on the success path.
 func (b *funcBody) isErrCheck(s *ast.IfStmt) bool {
 	if s.Init != nil || s.Else != nil {
 		return false
@@ -541,8 +542,19 @@ func (b *funcBody) isErrCheck(s *ast.IfStmt) bool {
 	if len(s.Body.List) != 1 {
 		return false
 	}
-	_, ok = s.Body.List[0].(*ast.ReturnStmt)
-	return ok
+	switch body := s.Body.List[0].(type) {
+	case *ast.ReturnStmt:
+		return true
+	case *ast.ExprStmt:
+		if call, ok := body.X.(*ast.CallExpr); ok {
+			if id, ok := unparen(call.Fun).(*ast.Ident); ok {
+				if bi, ok := b.info.Uses[id].(*types.Builtin); ok && bi.Name() == "panic" {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 func isNilIdent(e ast.Expr) bool {

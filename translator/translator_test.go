@@ -217,6 +217,21 @@ func TestErrretCircuit(t *testing.T) {
 	checkGolden(t, filepath.Join("testdata", "errret", "expected.lean"), out)
 }
 
+// TestPanicCircuit covers the two panic patterns: `if err != nil { panic(err) }`
+// gets dropped as Go-side plumbing, and a bare precondition panic emits
+// `Circuit.panic` under an if.
+func TestPanicCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/panic",
+		Circuit: "Panic",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "panic", "expected.lean"), out)
+}
+
 // TestMultiPackageCircuit exercises Config.WalkPackages: the circuit calls
 // into a foreign subpackage whose function, struct + method, and gadget
 // (via abstractor.Call) are all translated rather than blackboxed.
