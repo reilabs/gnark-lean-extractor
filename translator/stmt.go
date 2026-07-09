@@ -61,13 +61,32 @@ func (b *funcBody) declStmt(s *ast.DeclStmt) {
 		if !ok {
 			b.errf(spec.Pos(), "unsupported spec %T", spec)
 		}
-		if len(vs.Values) != 0 {
-			b.errf(vs.Pos(), "var with initializer — use `:=` instead")
-		}
 		if vs.Type == nil {
 			b.errf(vs.Pos(), "var without type")
 		}
 		typ := b.info.TypeOf(vs.Type)
+		// `var x T = v` — equivalent to `x := v` with an explicit type,
+		// so walk each initializer at the declared kind. `var x T` (no
+		// initializer) falls through to the zero-init path below.
+		if len(vs.Values) != 0 {
+			if len(vs.Values) != len(vs.Names) {
+				b.errf(vs.Pos(), "var initializer count does not match name count")
+			}
+			for i, id := range vs.Names {
+				obj := b.info.Defs[id]
+				k := b.classify(typ, id.Pos())
+				rhs := vs.Values[i]
+				b.aliasGuard(k, rhs)
+				str, monadic := b.exprTop(rhs, k)
+				ascr := ""
+				if k.base == baseInt64 {
+					ascr = " : Int64"
+				}
+				name := b.bind(obj)
+				b.push(letBind{name: name, ascr: ascr, rhs: str, monadic: monadic, mut: b.muts[obj]})
+			}
+			continue
+		}
 		for _, id := range vs.Names {
 			obj := b.info.Defs[id]
 			k := b.classify(typ, id.Pos())
