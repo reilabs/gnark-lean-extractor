@@ -14,14 +14,12 @@ import (
 // A funcBody with isPkgInit=true is used for folding package-var
 // initializers (no locals, no api, no receiver, and liftMonadic errfs).
 
-func (t *translator) info() *types.Info { return t.pkg.TypesInfo }
-
-func (t *translator) kindOf(e ast.Expr) kind {
-	return t.classify(t.info().TypeOf(e), e.Pos())
+func (b *funcBody) kindOf(e ast.Expr) kind {
+	return b.classify(b.info.TypeOf(e), e.Pos())
 }
 
 // renderConst renders a folded Go constant at the wanted Lean kind.
-func (t *translator) renderConst(v constant.Value, want kind, pos token.Pos) string {
+func (b *funcBody) renderConst(v constant.Value, want kind, pos token.Pos) string {
 	if v.Kind() == constant.Bool {
 		if constant.BoolVal(v) {
 			return "true"
@@ -29,7 +27,7 @@ func (t *translator) renderConst(v constant.Value, want kind, pos token.Pos) str
 		return "false"
 	}
 	if v.Kind() != constant.Int {
-		t.errf(pos, "unsupported constant %s", v)
+		b.errf(pos, "unsupported constant %s", v)
 	}
 	s := v.ExactString()
 	if want.base == baseInt64 {
@@ -42,21 +40,21 @@ func (t *translator) renderConst(v constant.Value, want kind, pos token.Pos) str
 
 // isIntValued reports whether e is a non-constant Go integer expression
 // (constants render directly at the wanted type instead).
-func (t *translator) isIntValued(e ast.Expr) bool {
-	if tv, ok := t.info().Types[e]; ok && tv.Value != nil {
+func (b *funcBody) isIntValued(e ast.Expr) bool {
+	if tv, ok := b.info.Types[e]; ok && tv.Value != nil {
 		return false
 	}
-	typ := t.info().TypeOf(e)
+	typ := b.info.TypeOf(e)
 	if typ == nil {
 		return false
 	}
-	b, ok := typ.Underlying().(*types.Basic)
-	if !ok || b.Info()&types.IsInteger == 0 {
+	basic, ok := typ.Underlying().(*types.Basic)
+	if !ok || basic.Info()&types.IsInteger == 0 {
 		return false
 	}
 	// byte / uint8 already crosses into F via the []byte classification —
 	// no `.toInt` bridge is needed (and would fail since the value is F).
-	return b.Kind() != types.Uint8
+	return basic.Kind() != types.Uint8
 }
 
 // zero renders the Lean expression for Go's zero value at kind k. If typ is
@@ -65,7 +63,7 @@ func (t *translator) isIntValued(e ast.Expr) bool {
 // declarations translate to the right length. Pass nil when only the kind
 // is known (named returns, tuple slots) or when a slice's `[]` empty result
 // is what you want.
-func (t *translator) zero(k kind, typ types.Type) string {
+func (b *funcBody) zero(k kind, typ types.Type) string {
 	if k.depth == 0 {
 		switch k.base {
 		case baseInt64:
@@ -80,13 +78,13 @@ func (t *translator) zero(k kind, typ types.Type) string {
 	}
 	if typ != nil {
 		if arr, ok := typ.Underlying().(*types.Array); ok {
-			return fmt.Sprintf("List.replicate %d %s", arr.Len(), t.zero(k.elem(), arr.Elem()))
+			return fmt.Sprintf("List.replicate %d %s", arr.Len(), b.zero(k.elem(), arr.Elem()))
 		}
 	}
 	return "[]"
 }
 
-func (t *translator) callee(call *ast.CallExpr) types.Object {
+func (b *funcBody) callee(call *ast.CallExpr) types.Object {
 	fun := unparen(call.Fun)
 	// Generic instantiations: `Fn[X]` and `Fn[X, Y]` show up in the AST as
 	// IndexExpr / IndexListExpr wrapping the underlying callee. Peel that
@@ -99,9 +97,9 @@ func (t *translator) callee(call *ast.CallExpr) types.Object {
 	}
 	switch fn := fun.(type) {
 	case *ast.Ident:
-		return t.info().Uses[fn]
+		return b.info.Uses[fn]
 	case *ast.SelectorExpr:
-		return t.info().Uses[fn.Sel]
+		return b.info.Uses[fn.Sel]
 	}
 	return nil
 }
@@ -123,7 +121,7 @@ func (b *funcBody) atom(e ast.Expr, want kind) string {
 // field through .toInt mod p.
 func (b *funcBody) exprTop(e ast.Expr, want kind) (string, bool) {
 	str, monadic := b.exprBare(e, want)
-	if !monadic && want.base != baseInt64 && want.depth == 0 && b.t.isIntValued(e) {
+	if !monadic && want.base != baseInt64 && want.depth == 0 && b.isIntValued(e) {
 		return fmt.Sprintf("((%s).toInt : F)", str), false
 	}
 	return str, monadic
@@ -131,26 +129,26 @@ func (b *funcBody) exprTop(e ast.Expr, want kind) (string, bool) {
 
 // exprBare translates a Go expression to Lean, per-shape.
 func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
-	if tv, ok := b.t.info().Types[e]; ok && tv.Value != nil {
-		return b.t.renderConst(tv.Value, want, e.Pos()), false
+	if tv, ok := b.info.Types[e]; ok && tv.Value != nil {
+		return b.renderConst(tv.Value, want, e.Pos()), false
 	}
 	switch e := e.(type) {
 	case *ast.ParenExpr:
 		return b.exprBare(e.X, want)
 	case *ast.Ident:
-		obj := b.t.info().Uses[e]
+		obj := b.info.Uses[e]
 		if name, ok := b.resolveObj(obj, e.Pos()); ok {
 			return name, false
 		}
 		// Package-level Var with a foldable initializer.
-		if v, ok := obj.(*types.Var); ok && v.Parent() == b.t.pkg.Types.Scope() {
-			return b.t.resolvePkgVar(v), false
+		if v, ok := obj.(*types.Var); ok && v.Parent() == b.pkg.Types.Scope() {
+			return b.resolvePkgVar(v), false
 		}
-		b.t.errf(e.Pos(), "unknown identifier %s", e.Name)
+		b.errf(e.Pos(), "unknown identifier %s", e.Name)
 	case *ast.SelectorExpr:
-		sel, ok := b.t.info().Selections[e]
+		sel, ok := b.info.Selections[e]
 		if !ok || sel.Kind() != types.FieldVal {
-			b.t.errf(e.Pos(), "unsupported selector expression")
+			b.errf(e.Pos(), "unsupported selector expression")
 		}
 		// Circuit fields and named locals resolve directly.
 		if name, ok := b.resolveObj(sel.Obj(), e.Pos()); ok {
@@ -159,17 +157,17 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 		// Nested field access: translate the base and append `.Field`.
 		baseStr, monadic := b.exprBare(e.X, kind{})
 		if monadic {
-			b.t.errf(e.Pos(), "cannot select a field of a monadic expression")
+			b.errf(e.Pos(), "cannot select a field of a monadic expression")
 		}
 		return wrapParen(baseStr) + "." + sanitize(sel.Obj().Name()), false
 	case *ast.IndexExpr:
-		base := b.atom(e.X, b.t.kindOf(e.X))
+		base := b.atom(e.X, b.kindOf(e.X))
 		return fmt.Sprintf("%s[%s]!", base, b.natRaw(e.Index)), false
 	case *ast.SliceExpr:
 		if e.Slice3 {
-			b.t.errf(e.Pos(), "three-index slice expressions are not supported")
+			b.errf(e.Pos(), "three-index slice expressions are not supported")
 		}
-		base := b.atom(e.X, b.t.kindOf(e.X))
+		base := b.atom(e.X, b.kindOf(e.X))
 		// xs[:]       -> xs (identity)
 		// xs[a:]      -> xs.drop a
 		// xs[:b]      -> xs.take b
@@ -189,17 +187,17 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 	case *ast.CallExpr:
 		return b.call(e)
 	case *ast.CompositeLit:
-		k := b.t.classify(b.t.info().TypeOf(e), e.Pos())
+		k := b.classify(b.info.TypeOf(e), e.Pos())
 		if k.base == baseStruct && k.depth == 0 {
 			return b.structLit(e, k), false
 		}
 		if k.base == baseInt64 || k.depth == 0 {
-			b.t.errf(e.Pos(), "unsupported composite literal type")
+			b.errf(e.Pos(), "unsupported composite literal type")
 		}
 		elems := make([]string, len(e.Elts))
 		for i, el := range e.Elts {
 			if _, ok := el.(*ast.KeyValueExpr); ok {
-				b.t.errf(el.Pos(), "keyed composite literals are not supported")
+				b.errf(el.Pos(), "keyed composite literals are not supported")
 			}
 			elems[i] = b.atom(el, k.elem())
 		}
@@ -217,18 +215,18 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 			inner, monadic := b.exprBare(e.X, kind{base: baseBool})
 			return "!" + wrapParen(inner), monadic
 		}
-		b.t.errf(e.Pos(), "unsupported unary operator %s", e.Op)
+		b.errf(e.Pos(), "unsupported unary operator %s", e.Op)
 	case *ast.StarExpr:
 		// `*p` — the dual of `&x`. Only accept when the operand is a
 		// pointer to a value the translator already models (a value
 		// receiver / by-value struct or slice), not e.g. a pointer field.
-		if _, ok := b.t.info().TypeOf(e.X).(*types.Pointer); !ok {
-			b.t.errf(e.Pos(), "cannot dereference non-pointer expression")
+		if _, ok := b.info.TypeOf(e.X).(*types.Pointer); !ok {
+			b.errf(e.Pos(), "cannot dereference non-pointer expression")
 		}
 		return b.exprBare(e.X, want)
 	case *ast.BinaryExpr:
-		if b.t.kindOf(e.X).base != baseInt64 {
-			b.t.errf(e.Pos(), "arithmetic on Variables must go through the api")
+		if b.kindOf(e.X).base != baseInt64 {
+			b.errf(e.Pos(), "arithmetic on Variables must go through the api")
 		}
 		gi := kind{base: baseInt64}
 		x, y := b.atom(e.X, gi), b.atom(e.Y, gi)
@@ -246,10 +244,10 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 			// Int64 remainder is Go's: sign of the dividend.
 			return fmt.Sprintf("%s %% %s", x, y), false
 		default:
-			b.t.errf(e.Pos(), "unsupported integer operator %s", e.Op)
+			b.errf(e.Pos(), "unsupported integer operator %s", e.Op)
 		}
 	}
-	b.t.errf(e.Pos(), "unsupported expression %T", e)
+	b.errf(e.Pos(), "unsupported expression %T", e)
 	return "", false
 }
 
@@ -258,21 +256,21 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 // else crosses the boundary through .toInt.toNat (clamping negatives to 0,
 // where Go panics instead).
 func (b *funcBody) natRaw(e ast.Expr) string {
-	if tv, ok := b.t.info().Types[e]; ok && tv.Value != nil {
+	if tv, ok := b.info.Types[e]; ok && tv.Value != nil {
 		if tv.Value.Kind() != constant.Int {
-			b.t.errf(e.Pos(), "unsupported constant %s", tv.Value)
+			b.errf(e.Pos(), "unsupported constant %s", tv.Value)
 		}
 		s := tv.Value.ExactString()
 		if strings.HasPrefix(s, "-") {
-			b.t.errf(e.Pos(), "constant negative index or size")
+			b.errf(e.Pos(), "constant negative index or size")
 		}
 		return s
 	}
 	// len(xs) used as a size is already a Nat; skip the Int64 round-trip.
 	if call, ok := unparen(e).(*ast.CallExpr); ok {
 		if id, ok := unparen(call.Fun).(*ast.Ident); ok {
-			if bi, ok := b.t.info().Uses[id].(*types.Builtin); ok && bi.Name() == "len" {
-				return b.atom(call.Args[0], b.t.kindOf(call.Args[0])) + ".length"
+			if bi, ok := b.info.Uses[id].(*types.Builtin); ok && bi.Name() == "len" {
+				return b.atom(call.Args[0], b.kindOf(call.Args[0])) + ".length"
 			}
 		}
 	}
@@ -285,30 +283,30 @@ func (b *funcBody) natAtom(e ast.Expr) string {
 
 func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 	// Type conversions (uint32(n), frontend.Variable(0), ...) pass through.
-	if tv, ok := b.t.info().Types[e.Fun]; ok && tv.IsType() {
+	if tv, ok := b.info.Types[e.Fun]; ok && tv.IsType() {
 		// []byte("...") — fold the string literal at translate time into
 		// a `List F` of byte-wide numerals.
 		if isByteSliceType(tv.Type) {
-			if s, ok := stringLiteralValue(b.t.info(), e.Args[0]); ok {
+			if s, ok := stringLiteralValue(b.info, e.Args[0]); ok {
 				parts := make([]string, len(s))
 				for i := 0; i < len(s); i++ {
 					parts[i] = fmt.Sprintf("(%d : F)", s[i])
 				}
 				return "[" + strings.Join(parts, ", ") + "]", false
 			}
-			b.t.errf(e.Pos(), "only string-literal []byte conversions are supported")
+			b.errf(e.Pos(), "only string-literal []byte conversions are supported")
 		}
-		return b.exprTop(e.Args[0], b.t.classify(tv.Type, e.Pos()))
+		return b.exprTop(e.Args[0], b.classify(tv.Type, e.Pos()))
 	}
 
 	// Builtins.
 	if id, ok := unparen(e.Fun).(*ast.Ident); ok {
-		if bi, ok := b.t.info().Uses[id].(*types.Builtin); ok {
+		if bi, ok := b.info.Uses[id].(*types.Builtin); ok {
 			switch bi.Name() {
 			case "len":
-				return "Int64.ofNat " + b.atom(e.Args[0], b.t.kindOf(e.Args[0])) + ".length", false
+				return "Int64.ofNat " + b.atom(e.Args[0], b.kindOf(e.Args[0])) + ".length", false
 			case "append":
-				bk := b.t.kindOf(e.Args[0])
+				bk := b.kindOf(e.Args[0])
 				base := b.atom(e.Args[0], bk)
 				if e.Ellipsis.IsValid() {
 					return fmt.Sprintf("%s ++ %s", base, b.atom(e.Args[1], bk)), false
@@ -324,28 +322,28 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 				return fmt.Sprintf("%s ++ [%s]", base, strings.Join(elems, ", ")), false
 			case "make":
 				if len(e.Args) < 2 || len(e.Args) > 3 {
-					b.t.errf(e.Pos(), "make requires a length (and optional capacity)")
+					b.errf(e.Pos(), "make requires a length (and optional capacity)")
 				}
-				mk := b.t.classify(b.t.info().TypeOf(e), e.Pos())
+				mk := b.classify(b.info.TypeOf(e), e.Pos())
 				n := b.natAtom(e.Args[1])
-				return fmt.Sprintf("List.replicate %s %s", n, b.t.zero(mk.elem(), nil)), false
+				return fmt.Sprintf("List.replicate %s %s", n, b.zero(mk.elem(), nil)), false
 			default:
-				b.t.errf(e.Pos(), "unsupported builtin %s", bi.Name())
+				b.errf(e.Pos(), "unsupported builtin %s", bi.Name())
 			}
 		}
 	}
 
 	// api method calls become gates.
 	if sel, ok := unparen(e.Fun).(*ast.SelectorExpr); ok {
-		if id, ok := unparen(sel.X).(*ast.Ident); ok && b.isAPI(b.t.info().Uses[id]) {
+		if id, ok := unparen(sel.X).(*ast.Ident); ok && b.isAPI(b.info.Uses[id]) {
 			return b.gate(sel.Sel.Name, e)
 		}
 	}
 
 	// Static function calls: blackboxed or translated.
-	fn, ok := b.t.callee(e).(*types.Func)
+	fn, ok := b.callee(e).(*types.Func)
 	if !ok {
-		b.t.errf(e.Pos(), "unsupported call")
+		b.errf(e.Pos(), "unsupported call")
 	}
 	full := fn.Name()
 	if fn.Pkg() != nil {
@@ -360,45 +358,45 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 	// output kind comes from the wrapper.
 	if isAbstractorCallVariant(fn) {
 		if len(e.Args) != 2 {
-			b.t.errf(e.Pos(), "abstractor.%s expects (api, gadget)", fn.Name())
+			b.errf(e.Pos(), "abstractor.%s expects (api, gadget)", fn.Name())
 		}
 		gadgetArg := e.Args[1]
-		gadgetType := b.t.info().TypeOf(gadgetArg)
+		gadgetType := b.info.TypeOf(gadgetArg)
 		method, _, _ := types.LookupFieldOrMethod(gadgetType, true, fn.Pkg(), "DefineGadget")
 		defineFn, _ := method.(*types.Func)
 		if defineFn == nil {
-			b.t.errf(e.Pos(), "%s has no DefineGadget method", gadgetType)
+			b.errf(e.Pos(), "%s has no DefineGadget method", gadgetType)
 		}
-		gadgetStr := b.atom(gadgetArg, b.t.classify(gadgetType, e.Pos()))
-		if defineFn.Pkg() != b.t.pkg.Types {
+		gadgetStr := b.atom(gadgetArg, b.classify(gadgetType, e.Pos()))
+		if defineFn.Pkg() != b.pkg.Types {
 			// Foreign gadget: axiomatize DefineGadget with the wrapper's
 			// return kind. The gadget struct itself is already registered
 			// by the classify call above.
-			b.t.ensureGadgetAxiom(defineFn, gadgetType.(*types.Named), fn.Name(), e.Pos())
+			b.ensureGadgetAxiom(defineFn, gadgetType.(*types.Named), fn.Name(), e.Pos())
 		} else {
-			b.t.translateFunc(defineFn, e.Pos())
+			b.translateFunc(defineFn, e.Pos())
 		}
 		return gadgetStr + ".DefineGadget", true
 	}
-	if leanName, ok := b.t.cfg.Blackboxes[full]; ok {
-		actual := b.t.ensureAxiom(leanName, fn, e.Pos())
+	if leanName, ok := b.cfg.Blackboxes[full]; ok {
+		actual := b.ensureAxiom(leanName, fn, e.Pos())
 		return actual + b.callArgs(e, fn), true
 	}
-	if fn.Pkg() == b.t.pkg.Types {
-		name := b.t.translateFunc(fn, e.Pos())
+	if fn.Pkg() == b.pkg.Types {
+		name := b.translateFunc(fn, e.Pos())
 		// For method calls, emit `<receiver>.<Method> <args>` dot syntax
 		// (the receiver is the SelectorExpr base, not in call.Args).
 		if fn.Type().(*types.Signature).Recv() != nil {
 			sel, ok := unparen(e.Fun).(*ast.SelectorExpr)
 			if !ok {
-				b.t.errf(e.Pos(), "unexpected method call form")
+				b.errf(e.Pos(), "unexpected method call form")
 			}
-			recvStr := b.atom(sel.X, b.t.kindOf(sel.X))
+			recvStr := b.atom(sel.X, b.kindOf(sel.X))
 			return recvStr + "." + fn.Name() + b.callArgs(e, fn), true
 		}
 		return name + b.callArgs(e, fn), true
 	}
-	b.t.errf(e.Pos(), "call to %s is not supported — register it as a blackbox", full)
+	b.errf(e.Pos(), "call to %s is not supported — register it as a blackbox", full)
 	return "", false
 }
 
@@ -424,7 +422,7 @@ func (b *funcBody) callArgs(e *ast.CallExpr, fn *types.Func) string {
 			continue
 		}
 		out.WriteString(" ")
-		out.WriteString(b.atom(e.Args[i], b.t.classify(pt, e.Args[i].Pos())))
+		out.WriteString(b.atom(e.Args[i], b.classify(pt, e.Args[i].Pos())))
 	}
 	if !variadic {
 		return out.String()
@@ -433,7 +431,7 @@ func (b *funcBody) callArgs(e *ast.CallExpr, fn *types.Func) string {
 	sliceType, _ := sig.Params().At(nParams - 1).Type().(*types.Slice)
 	var elemKind kind
 	if sliceType != nil {
-		elemKind = b.t.classify(sliceType.Elem(), e.Pos())
+		elemKind = b.classify(sliceType.Elem(), e.Pos())
 	}
 	tail := e.Args[fixed:]
 	if e.Ellipsis.IsValid() && len(tail) == 1 {
@@ -457,7 +455,7 @@ func (b *funcBody) callArgs(e *ast.CallExpr, fn *types.Func) string {
 // gate translates a frontend.API method call.
 func (b *funcBody) gate(name string, call *ast.CallExpr) (string, bool) {
 	if call.Ellipsis.IsValid() && name != "FromBinary" {
-		b.t.errf(call.Pos(), "spread arguments to api.%s are not supported", name)
+		b.errf(call.Pos(), "spread arguments to api.%s are not supported", name)
 	}
 	arg := func(i int) string { return b.atom(call.Args[i], kind{}) }
 	fold := func(op string) string {
@@ -505,7 +503,7 @@ func (b *funcBody) gate(name string, call *ast.CallExpr) (string, bool) {
 	case "Inverse":
 		return "Gates.inv " + arg(0), true
 	case "ToBinary":
-		n := fmt.Sprintf("%d", b.t.cfg.Field.ScalarField().BitLen())
+		n := fmt.Sprintf("%d", b.cfg.Field.ScalarField().BitLen())
 		if len(call.Args) == 2 {
 			n = b.natAtom(call.Args[1])
 		}
@@ -519,7 +517,7 @@ func (b *funcBody) gate(name string, call *ast.CallExpr) (string, bool) {
 	case "AssertIsLessOrEqual":
 		return fmt.Sprintf("Gates.le %s %s", arg(0), arg(1)), true
 	}
-	b.t.errf(call.Pos(), "unsupported api method %s", name)
+	b.errf(call.Pos(), "unsupported api method %s", name)
 	return "", false
 }
 
@@ -528,21 +526,21 @@ func (b *funcBody) gate(name string, call *ast.CallExpr) (string, bool) {
 // synthesized record. Registers the Circuit type as a Lean structure on
 // demand — nothing is emitted for circuits whose bodies never take the
 // receiver's value.
-func (t *translator) synthesizeCircuitLiteral(pos token.Pos) string {
-	obj := t.pkg.Types.Scope().Lookup(t.cfg.Circuit)
+func (b *funcBody) synthesizeCircuitLiteral(pos token.Pos) string {
+	obj := b.pkg.Types.Scope().Lookup(b.cfg.Circuit)
 	if obj == nil {
-		t.errf(pos, "circuit type %s not found", t.cfg.Circuit)
+		b.errf(pos, "circuit type %s not found", b.cfg.Circuit)
 	}
 	named, ok := obj.Type().(*types.Named)
 	if !ok {
-		t.errf(pos, "circuit type %s is not a named struct", t.cfg.Circuit)
+		b.errf(pos, "circuit type %s is not a named struct", b.cfg.Circuit)
 	}
 	st, ok := named.Underlying().(*types.Struct)
 	if !ok {
-		t.errf(pos, "circuit type %s is not a struct", t.cfg.Circuit)
+		b.errf(pos, "circuit type %s is not a struct", b.cfg.Circuit)
 	}
-	t.classify(named, pos)
-	structName := t.emit.structReg.name(named)
+	b.classify(named, pos)
+	structName := b.emit.structReg.name(named)
 	parts := make([]string, st.NumFields())
 	for i := 0; i < st.NumFields(); i++ {
 		fld := st.Field(i)
@@ -557,7 +555,7 @@ func (t *translator) synthesizeCircuitLiteral(pos token.Pos) string {
 // (`Utxo{Owner: a}`) forms are supported; mixed forms match Go's rejection.
 func (b *funcBody) structLit(e *ast.CompositeLit, k kind) string {
 	st := k.named.Underlying().(*types.Struct)
-	typName := b.t.emit.structReg.name(k.named)
+	typName := b.emit.structReg.name(k.named)
 	if len(e.Elts) == 0 {
 		return fmt.Sprintf("({ : %s })", typName)
 	}
@@ -571,32 +569,32 @@ func (b *funcBody) structLit(e *ast.CompositeLit, k kind) string {
 		for _, el := range e.Elts {
 			kv, ok := el.(*ast.KeyValueExpr)
 			if !ok {
-				b.t.errf(el.Pos(), "mixed keyed/positional struct literal")
+				b.errf(el.Pos(), "mixed keyed/positional struct literal")
 			}
 			keyId, ok := kv.Key.(*ast.Ident)
 			if !ok {
-				b.t.errf(kv.Key.Pos(), "struct literal key must be a field name")
+				b.errf(kv.Key.Pos(), "struct literal key must be a field name")
 			}
 			supplied[keyId.Name] = kv.Value
 		}
 		for i := 0; i < st.NumFields(); i++ {
 			fld := st.Field(i)
-			fk := b.t.classify(fld.Type(), e.Pos())
+			fk := b.classify(fld.Type(), e.Pos())
 			var val string
 			if v, ok := supplied[fld.Name()]; ok {
 				val = b.atom(v, fk)
 			} else {
-				val = b.t.zero(fk, nil)
+				val = b.zero(fk, nil)
 			}
 			parts = append(parts, fmt.Sprintf("%s := %s", sanitize(fld.Name()), val))
 		}
 	} else {
 		if len(e.Elts) != st.NumFields() {
-			b.t.errf(e.Pos(), "positional struct literal must supply all fields of %s", typName)
+			b.errf(e.Pos(), "positional struct literal must supply all fields of %s", typName)
 		}
 		for i, el := range e.Elts {
 			fld := st.Field(i)
-			fk := b.t.classify(fld.Type(), el.Pos())
+			fk := b.classify(fld.Type(), el.Pos())
 			parts = append(parts, fmt.Sprintf("%s := %s", sanitize(fld.Name()), b.atom(el, fk)))
 		}
 	}

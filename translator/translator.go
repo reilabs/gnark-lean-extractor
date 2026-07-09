@@ -141,8 +141,8 @@ func Translate(cfg Config) (out string, err error) {
 	return b.String(), nil
 }
 
-func (t *translator) errf(pos token.Pos, format string, args ...any) {
-	panic(translateError{t.pkg.Fset.Position(pos), fmt.Sprintf(format, args...)})
+func (b *funcBody) errf(pos token.Pos, format string, args ...any) {
+	panic(translateError{b.pkg.Fset.Position(pos), fmt.Sprintf(format, args...)})
 }
 
 var leanReserved = map[string]bool{
@@ -184,11 +184,11 @@ func (t *translator) findDefine() *ast.FuncDecl {
 	panic(translateError{msg: fmt.Sprintf("no Define method found for struct %s in %s", t.cfg.Circuit, t.cfg.Dir)})
 }
 
-func (t *translator) findFuncDecl(fn *types.Func) *ast.FuncDecl {
-	for _, file := range t.pkg.Syntax {
+func (b *funcBody) findFuncDecl(fn *types.Func) *ast.FuncDecl {
+	for _, file := range b.pkg.Syntax {
 		for _, decl := range file.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
-			if ok && t.pkg.TypesInfo.Defs[fd.Name] == fn {
+			if ok && b.info.Defs[fd.Name] == fn {
 				return fd
 			}
 		}
@@ -198,11 +198,31 @@ func (t *translator) findFuncDecl(fn *types.Func) *ast.FuncDecl {
 
 func (t *translator) newFuncBody() *funcBody {
 	return &funcBody{
-		t:       t,
+		cfg:     t.cfg,
+		pkg:     t.pkg,
+		info:    t.pkg.TypesInfo,
+		emit:    t.emit,
 		names:   map[types.Object]string{},
 		muts:    map[types.Object]bool{},
 		errVars: map[types.Object]bool{},
 	}
+}
+
+// runBody walks the AST body into b (block + analyzeEffects). Callers must
+// call b.scanMut(body) beforehand — translateFunc reads b.muts to build the
+// mut-param prologue, so scanning stays under caller control. fn is nil for
+// Define.
+func (b *funcBody) runBody(fn *types.Func, body *ast.BlockStmt, prologue func(), paramObjs []types.Object) {
+	b.block(body.List, prologue)
+	b.analyzeEffects(fn, body, paramObjs)
+}
+
+// renderDef formats a top-level Lean `def NAME BINDERS : Circuit RESTYPE :=
+// do BODY` from a walked funcBody's stmts.
+func renderDef(name string, binders []string, resType string, stmts []stmt) string {
+	body := renderBlock(block{stmts: stmts, allowReassignEnd: false}, 1)
+	return fmt.Sprintf("def %s %s : Circuit %s := do\n%s",
+		name, strings.Join(binders, " "), resType, strings.Join(body, "\n"))
 }
 
 // translateDefine translates the circuit's Define method into `def circuit`.
@@ -213,206 +233,246 @@ func (t *translator) translateDefine() string {
 	b.isMain = true
 
 	if names := fd.Recv.List[0].Names; len(names) > 0 {
-		b.recv = t.pkg.TypesInfo.Defs[names[0]]
+		b.recv = b.info.Defs[names[0]]
 	}
 	params := fd.Type.Params.List
-	if len(params) != 1 || len(params[0].Names) != 1 || !isAPI(t.pkg.TypesInfo.TypeOf(params[0].Type)) {
-		t.errf(fd.Pos(), "Define must take a single frontend.API parameter")
+	if len(params) != 1 || len(params[0].Names) != 1 || !isAPI(b.info.TypeOf(params[0].Type)) {
+		b.errf(fd.Pos(), "Define must take a single frontend.API parameter")
 	}
-	b.api = t.pkg.TypesInfo.Defs[params[0].Names[0]]
+	b.api = b.info.Defs[params[0].Names[0]]
 
-	obj := t.pkg.Types.Scope().Lookup(t.cfg.Circuit)
+	obj := b.pkg.Types.Scope().Lookup(b.cfg.Circuit)
 	if obj == nil {
-		t.errf(fd.Pos(), "struct %s not found", t.cfg.Circuit)
+		b.errf(fd.Pos(), "struct %s not found", b.cfg.Circuit)
 	}
 	st, ok := obj.Type().Underlying().(*types.Struct)
 	if !ok {
-		t.errf(fd.Pos(), "%s is not a struct", t.cfg.Circuit)
+		b.errf(fd.Pos(), "%s is not a struct", b.cfg.Circuit)
 	}
-	var binders []string
+	binders := make([]string, st.NumFields())
 	for i := 0; i < st.NumFields(); i++ {
 		fld := st.Field(i)
-		k := t.classify(fld.Type(), fld.Pos())
-		name := sanitize(fld.Name())
-		b.names[fld] = name
-		binders = append(binders, fmt.Sprintf("(%s : %s)", name, t.leanType(k)))
+		binders[i] = b.bindLocal(fld.Name(), fld, fld.Type(), fld.Pos())
 	}
 
 	b.scanMut(fd.Body)
-	b.block(fd.Body.List, nil)
-	t.analyzeEffects(nil, fd.Body, []types.Object{b.api})
-	body := renderBlock(block{stmts: b.stmts, allowReassignEnd: false}, 1)
-	return fmt.Sprintf("def circuit %s : Circuit Unit := do\n%s",
-		strings.Join(binders, " "), strings.Join(body, "\n"))
+	b.runBody(nil, fd.Body, nil, []types.Object{b.api})
+	return renderDef("circuit", binders, "Unit", b.stmts)
 }
 
 // translateFunc translates a package-local helper function on demand and
-// returns its Lean name. Callees are emitted before callers.
-func (t *translator) translateFunc(fn *types.Func, pos token.Pos) string {
-	slot := t.emit.funcReg.slot(fn)
+// returns its Lean name. Callees are emitted before callers. Called from the
+// expression walker (b.call) — the receiver is the *caller's* funcBody; a
+// child funcBody is spawned to walk the callee. Each phase (validate the
+// slot, bind receiver / params / result / named returns / prologue, walk
+// the body, allocate a name, emit the def) is a separate helper below.
+func (b *funcBody) translateFunc(fn *types.Func, pos token.Pos) string {
+	slot := b.emit.funcReg.slot(fn)
 	if slot.done {
 		return slot.leanName
 	}
-	if slot.inFlight {
-		t.errf(pos, "recursive functions are not supported: %s", fn.Name())
+	fd, sig := b.checkTranslatable(fn, slot, pos)
+
+	c := b.newChild()
+	recvNamed, binders := c.bindReceiver(fd, fn.Name())
+	paramBinders, paramObjs := c.bindParams(fd)
+	binders = append(binders, paramBinders...)
+	resType := c.inferResult(sig, fd, fn.Name())
+	c.bindNamedReturns(fd)
+
+	c.scanMut(fd.Body)
+	prologue := c.buildPrologue(fd)
+	c.runBody(fn, fd.Body, prologue, paramObjs)
+
+	name := b.allocateFuncName(fn, recvNamed)
+	slot.leanName = name
+	slot.done = true
+	slot.inFlight = false
+	b.emit.defs = append(b.emit.defs, renderDef(name, binders, resType, c.stmts))
+	return name
+}
+
+// newChild returns a fresh funcBody sharing b's shared translation state
+// (cfg / pkg / info / emit) with empty per-body scope. Used by translateFunc
+// to walk a callee's body without disturbing the caller's state.
+func (b *funcBody) newChild() *funcBody {
+	return &funcBody{
+		cfg:     b.cfg,
+		pkg:     b.pkg,
+		info:    b.info,
+		emit:    b.emit,
+		names:   map[types.Object]string{},
+		muts:    map[types.Object]bool{},
+		errVars: map[types.Object]bool{},
 	}
-	fd := t.findFuncDecl(fn)
+}
+
+// checkTranslatable validates that fn is translatable — has source, isn't
+// variadic, isn't already in flight (which would mean recursion). Marks the
+// slot in flight on success and returns the AST decl plus signature.
+func (b *funcBody) checkTranslatable(fn *types.Func, slot *funcSlot, pos token.Pos) (*ast.FuncDecl, *types.Signature) {
+	if slot.inFlight {
+		b.errf(pos, "recursive functions are not supported: %s", fn.Name())
+	}
+	fd := b.findFuncDecl(fn)
 	if fd == nil {
-		t.errf(pos, "no source for function %s — register it as a blackbox", fn.Name())
+		b.errf(pos, "no source for function %s — register it as a blackbox", fn.Name())
 	}
 	sig := fn.Type().(*types.Signature)
 	if sig.Variadic() {
-		t.errf(fd.Pos(), "variadic functions are not supported: %s", fn.Name())
+		b.errf(fd.Pos(), "variadic functions are not supported: %s", fn.Name())
 	}
-
 	slot.inFlight = true
-	b := t.newFuncBody()
+	return fd, sig
+}
 
+// bindReceiver emits the `(self : Recv)` binder for methods, registers the
+// receiver ident, and returns the named struct (for def-name qualification).
+// Pointer receivers are erased — the translation is value-semantic, so any
+// receiver-side mutation is caught later as a rejected field write. Returns
+// (nil, nil) for non-methods.
+func (b *funcBody) bindReceiver(fd *ast.FuncDecl, fnName string) (*types.Named, []string) {
+	if fd.Recv == nil {
+		return nil, nil
+	}
+	recvType := b.info.TypeOf(fd.Recv.List[0].Type)
+	rk := b.classify(recvType, fd.Recv.Pos())
+	if rk.base != baseStruct || rk.depth != 0 {
+		b.errf(fd.Recv.Pos(), "unsupported receiver type for %s", fnName)
+	}
+	recvName := "self"
+	var recvObj types.Object
+	if names := fd.Recv.List[0].Names; len(names) > 0 && names[0].Name != "_" {
+		recvName = names[0].Name
+		recvObj = b.info.Defs[names[0]]
+	}
+	return rk.named, []string{b.bindLocal(recvName, recvObj, recvType, fd.Recv.Pos())}
+}
+
+// bindParams walks fd's parameter list, building binders for non-api params
+// and stashing the api object on b. Returns the binders and the full param
+// object list (in signature order, api included) that analyzeEffects needs.
+func (b *funcBody) bindParams(fd *ast.FuncDecl) ([]string, []types.Object) {
 	var binders []string
 	var paramObjs []types.Object
-
-	// Method receiver: prepend a `(self : Recv)` binder, register the
-	// receiver ident so the body may refer to it, and remember the named
-	// struct so the def gets namespace-qualified below. Pointer receivers
-	// are erased — the translation is value-semantic, so any receiver-side
-	// mutation would surface as a rejected field write elsewhere.
-	var recvNamed *types.Named
-	if fd.Recv != nil {
-		recvType := t.pkg.TypesInfo.TypeOf(fd.Recv.List[0].Type)
-		rk := t.classify(recvType, fd.Recv.Pos())
-		if rk.base != baseStruct || rk.depth != 0 {
-			t.errf(fd.Recv.Pos(), "unsupported receiver type for %s", fn.Name())
-		}
-		recvNamed = rk.named
-		recvName := "self"
-		if names := fd.Recv.List[0].Names; len(names) > 0 && names[0].Name != "_" {
-			recvName = sanitize(names[0].Name)
-			obj := t.pkg.TypesInfo.Defs[names[0]]
-			b.names[obj] = recvName
-		}
-		binders = append(binders, fmt.Sprintf("(%s : %s)", recvName, t.leanType(rk)))
-	}
-
 	for _, field := range fd.Type.Params.List {
-		typ := t.pkg.TypesInfo.TypeOf(field.Type)
+		typ := b.info.TypeOf(field.Type)
 		for _, nameId := range field.Names {
-			obj := t.pkg.TypesInfo.Defs[nameId]
+			obj := b.info.Defs[nameId]
 			paramObjs = append(paramObjs, obj)
 			if isAPI(typ) {
 				b.api = obj
 				continue
 			}
-			k := t.classify(typ, field.Pos())
-			name := sanitize(nameId.Name)
-			b.names[obj] = name
-			binders = append(binders, fmt.Sprintf("(%s : %s)", name, t.leanType(k)))
+			binders = append(binders, b.bindLocal(nameId.Name, obj, typ, field.Pos()))
 		}
 	}
+	return binders, paramObjs
+}
 
-	resType := "Unit"
+// inferResult populates b.result and b.hasErrResult, returning the Lean
+// result-type string. Handles the abstractor's `DefineGadget` convention
+// (empty-interface signature) by classifying the actual return-expression
+// type instead.
+func (b *funcBody) inferResult(sig *types.Signature, fd *ast.FuncDecl, fnName string) string {
 	results, droppedErr := stripTrailingError(sig.Results())
 	b.hasErrResult = droppedErr
-	if n := results.Len(); n > 0 {
-		kinds := make([]kind, n)
-		parts := make([]string, n)
-		for i := 0; i < n; i++ {
-			rt := results.At(i).Type()
-			// The abstractor's `DefineGadget` convention declares its
-			// return as `interface{}`; classify the actual return
-			// expression's type instead.
-			if isEmptyInterface(rt) && n == 1 {
-				actual := findReturnExprType(fd.Body, t.pkg.TypesInfo)
-				if actual == nil {
-					t.errf(fd.Pos(), "cannot infer return type of %s (empty-interface signature and no return expression)", fn.Name())
-				}
-				rt = actual
-			}
-			kinds[i] = t.classify(rt, fd.Pos())
-			parts[i] = t.leanType(kinds[i])
-		}
-		b.result = kinds
-		if n == 1 {
-			resType = t.leanTypeParen(kinds[0])
-		} else {
-			resType = "(" + strings.Join(parts, " × ") + ")"
-		}
+	n := results.Len()
+	if n == 0 {
+		return "Unit"
 	}
+	kinds := make([]kind, n)
+	parts := make([]string, n)
+	for i := 0; i < n; i++ {
+		rt := results.At(i).Type()
+		if isEmptyInterface(rt) && n == 1 {
+			actual := findReturnExprType(fd.Body, b.info)
+			if actual == nil {
+				b.errf(fd.Pos(), "cannot infer return type of %s (empty-interface signature and no return expression)", fnName)
+			}
+			rt = actual
+		}
+		kinds[i] = b.classify(rt, fd.Pos())
+		parts[i] = b.leanType(kinds[i])
+	}
+	b.result = kinds
+	if n == 1 {
+		return b.leanTypeParen(kinds[0])
+	}
+	return "(" + strings.Join(parts, " × ") + ")"
+}
 
-	// Named return values (`func f() (x, y T)`): the body treats them as
-	// zero-initialized mutable locals, and a bare `return` returns their
-	// current values. Register them so the body can reference and assign
-	// to them; the prologue below emits their initial bindings.
+// bindNamedReturns registers Go's named return values (`func f() (x, y T)`)
+// as zero-initialized muts on b, so a bare `return` reads their current
+// values and the prologue emits their initial bindings.
+func (b *funcBody) bindNamedReturns(fd *ast.FuncDecl) {
+	if fd.Type.Results == nil {
+		return
+	}
 	var namedReturns []string
-	if fd.Type.Results != nil {
-		var idx int
-		for _, field := range fd.Type.Results.List {
-			for _, nameId := range field.Names {
-				if nameId.Name == "_" || idx >= len(b.result) {
-					idx++
-					continue
-				}
-				obj := t.pkg.TypesInfo.Defs[nameId]
-				name := sanitize(nameId.Name)
-				b.names[obj] = name
-				b.muts[obj] = true
-				namedReturns = append(namedReturns, name)
+	var idx int
+	for _, field := range fd.Type.Results.List {
+		for _, nameId := range field.Names {
+			if nameId.Name == "_" || idx >= len(b.result) {
 				idx++
+				continue
 			}
-		}
-		if len(namedReturns) > 0 {
-			b.namedReturns = namedReturns
+			obj := b.info.Defs[nameId]
+			name := sanitize(nameId.Name)
+			b.names[obj] = name
+			b.muts[obj] = true
+			namedReturns = append(namedReturns, name)
+			idx++
 		}
 	}
+	if len(namedReturns) > 0 {
+		b.namedReturns = namedReturns
+	}
+}
 
-	b.scanMut(fd.Body)
-	// Parameters reassigned in the body get shadowed by a mutable binding.
+// buildPrologue returns the closure that inserts named-return zero bindings
+// and mutable-param shadow bindings at the top of the body. nil if neither
+// is needed. Must be called AFTER scanMut so b.muts reflects the body.
+func (b *funcBody) buildPrologue(fd *ast.FuncDecl) func() {
 	var mutParams []string
 	for _, field := range fd.Type.Params.List {
 		for _, nameId := range field.Names {
-			obj := t.pkg.TypesInfo.Defs[nameId]
+			obj := b.info.Defs[nameId]
 			if name, ok := b.names[obj]; ok && b.muts[obj] {
 				mutParams = append(mutParams, name)
 			}
 		}
 	}
-	var prologue func()
-	if len(mutParams) > 0 || len(namedReturns) > 0 {
-		prologue = func() {
-			// Named returns bound as zero-initialised mut locals first —
-			// param shadows follow so any param that also carries a
-			// named-return name still refers to itself.
-			for i, n := range namedReturns {
-				zero := "(0 : F)"
-				if i < len(b.result) {
-					zero = b.t.zero(b.result[i], nil)
-				}
-				b.push(letBind{name: n, rhs: zero, mut: true})
+	if len(mutParams) == 0 && len(b.namedReturns) == 0 {
+		return nil
+	}
+	return func() {
+		// Named returns bound as zero-initialised mut locals first — param
+		// shadows follow so any param that also carries a named-return
+		// name still refers to itself.
+		for i, n := range b.namedReturns {
+			zero := "(0 : F)"
+			if i < len(b.result) {
+				zero = b.zero(b.result[i], nil)
 			}
-			for _, n := range mutParams {
-				b.push(letBind{name: n, rhs: n, mut: true})
-			}
+			b.push(letBind{name: n, rhs: zero, mut: true})
+		}
+		for _, n := range mutParams {
+			b.push(letBind{name: n, rhs: n, mut: true})
 		}
 	}
-	b.block(fd.Body.List, prologue)
-	t.analyzeEffects(fn, fd.Body, paramObjs)
+}
 
-	var name string
+// allocateFuncName returns the Lean name for fn's def. Methods get
+// `<StructName>.<Method>` (reserved exactly so Lean's dot-syntax lands on
+// it); free functions get a fresh unique name.
+func (b *funcBody) allocateFuncName(fn *types.Func, recvNamed *types.Named) string {
 	if recvNamed != nil {
-		// Method: `def <StructName>.<MethodName>` — Lean namespace
-		// resolution lets call sites use `u.MethodName args` dot syntax.
-		name = t.emit.structReg.name(recvNamed) + "." + fn.Name()
-		t.emit.alloc.reserveExact(name)
-	} else {
-		name = t.emit.alloc.fresh(fn.Name())
+		name := b.emit.structReg.name(recvNamed) + "." + fn.Name()
+		b.emit.alloc.reserveExact(name)
+		return name
 	}
-	slot.leanName = name
-	slot.done = true
-	slot.inFlight = false
-	body := renderBlock(block{stmts: b.stmts, allowReassignEnd: false}, 1)
-	def := fmt.Sprintf("def %s %s : Circuit %s := do\n%s",
-		name, strings.Join(binders, " "), resType, strings.Join(body, "\n"))
-	t.emit.defs = append(t.emit.defs, def)
-	return name
+	return b.emit.alloc.fresh(fn.Name())
 }
 
 func (t *translator) prelude() string {

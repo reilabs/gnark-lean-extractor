@@ -43,7 +43,7 @@ func (b *funcBody) stmt(s ast.Stmt) {
 	case *ast.DeclStmt:
 		b.declStmt(s)
 	default:
-		b.t.errf(s.Pos(), "unsupported statement %T", s)
+		b.errf(s.Pos(), "unsupported statement %T", s)
 	}
 }
 
@@ -54,27 +54,27 @@ func (b *funcBody) stmt(s ast.Stmt) {
 func (b *funcBody) declStmt(s *ast.DeclStmt) {
 	gd, ok := s.Decl.(*ast.GenDecl)
 	if !ok || gd.Tok != token.VAR {
-		b.t.errf(s.Pos(), "unsupported declaration %T", s.Decl)
+		b.errf(s.Pos(), "unsupported declaration %T", s.Decl)
 	}
 	for _, spec := range gd.Specs {
 		vs, ok := spec.(*ast.ValueSpec)
 		if !ok {
-			b.t.errf(spec.Pos(), "unsupported spec %T", spec)
+			b.errf(spec.Pos(), "unsupported spec %T", spec)
 		}
 		if len(vs.Values) != 0 {
-			b.t.errf(vs.Pos(), "var with initializer — use `:=` instead")
+			b.errf(vs.Pos(), "var with initializer — use `:=` instead")
 		}
 		if vs.Type == nil {
-			b.t.errf(vs.Pos(), "var without type")
+			b.errf(vs.Pos(), "var without type")
 		}
-		typ := b.info().TypeOf(vs.Type)
+		typ := b.info.TypeOf(vs.Type)
 		for _, id := range vs.Names {
-			obj := b.info().Defs[id]
-			k := b.t.classify(typ, id.Pos())
+			obj := b.info.Defs[id]
+			k := b.classify(typ, id.Pos())
 			name := b.bind(obj)
 			b.push(letBind{
 				name: name,
-				rhs:  b.t.zero(k, typ),
+				rhs:  b.zero(k, typ),
 				mut:  b.muts[obj],
 			})
 		}
@@ -85,27 +85,27 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 	if len(s.Lhs) > 1 && len(s.Rhs) == 1 {
 		call, ok := unparen(s.Rhs[0]).(*ast.CallExpr)
 		if !ok {
-			b.t.errf(s.Pos(), "multi-assignment RHS must be a single call")
+			b.errf(s.Pos(), "multi-assignment RHS must be a single call")
 		}
 		b.multiAssign(s, call)
 		return
 	}
 	if len(s.Lhs) != 1 || len(s.Rhs) != 1 {
-		b.t.errf(s.Pos(), "multi-assignment is not supported")
+		b.errf(s.Pos(), "multi-assignment is not supported")
 	}
 	rhs := s.Rhs[0]
 	switch s.Tok {
 	case token.DEFINE:
 		id, ok := s.Lhs[0].(*ast.Ident)
 		if !ok {
-			b.t.errf(s.Pos(), "unsupported := target")
+			b.errf(s.Pos(), "unsupported := target")
 		}
 		if id.Name == "_" {
 			b.discard(rhs)
 			return
 		}
-		obj := b.info().Defs[id]
-		k := b.t.classify(obj.Type(), id.Pos())
+		obj := b.info.Defs[id]
+		k := b.classify(obj.Type(), id.Pos())
 		b.aliasGuard(k, rhs)
 		str, monadic := b.exprTop(rhs, k)
 		// Ascribe Int64 bindings so bare numerals don't default to Nat.
@@ -122,26 +122,26 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 				b.discard(rhs)
 				return
 			}
-			obj := b.info().Uses[lhs]
+			obj := b.info.Uses[lhs]
 			name, ok := b.names[obj]
 			if !ok {
-				b.t.errf(lhs.Pos(), "assignment to unknown variable %s", lhs.Name)
+				b.errf(lhs.Pos(), "assignment to unknown variable %s", lhs.Name)
 			}
-			k := b.t.classify(obj.Type(), lhs.Pos())
+			k := b.classify(obj.Type(), lhs.Pos())
 			b.aliasGuard(k, rhs)
 			str, monadic := b.exprTop(rhs, k)
 			b.push(reassign{name: name, rhs: str, monadic: monadic})
 		case *ast.IndexExpr:
 			id, ok := lhs.X.(*ast.Ident)
 			if !ok {
-				b.t.errf(lhs.Pos(), "only simple `xs[i] = v` assignments are supported")
+				b.errf(lhs.Pos(), "only simple `xs[i] = v` assignments are supported")
 			}
-			obj := b.info().Uses[id]
+			obj := b.info.Uses[id]
 			name, ok := b.names[obj]
 			if !ok {
-				b.t.errf(lhs.Pos(), "assignment to unknown variable %s", id.Name)
+				b.errf(lhs.Pos(), "assignment to unknown variable %s", id.Name)
 			}
-			bk := b.t.kindOf(lhs.X)
+			bk := b.kindOf(lhs.X)
 			idx := b.natAtom(lhs.Index)
 			val := b.atom(rhs, bk.elem())
 			b.push(indexSet{name: name, idx: idx, val: val})
@@ -150,22 +150,22 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 			// structure-update syntax `{ x with Field := v }`.
 			id, ok := lhs.X.(*ast.Ident)
 			if !ok {
-				b.t.errf(lhs.Pos(), "field writes are only supported on a bound local")
+				b.errf(lhs.Pos(), "field writes are only supported on a bound local")
 			}
-			obj := b.info().Uses[id]
+			obj := b.info.Uses[id]
 			name, ok := b.names[obj]
 			if !ok {
-				b.t.errf(lhs.Pos(), "assignment to unknown variable %s", id.Name)
+				b.errf(lhs.Pos(), "assignment to unknown variable %s", id.Name)
 			}
 			fieldName := sanitize(lhs.Sel.Name)
-			fk := b.t.kindOf(lhs)
+			fk := b.kindOf(lhs)
 			val := b.atom(rhs, fk)
 			b.push(fieldSet{name: name, field: fieldName, val: val})
 		default:
-			b.t.errf(s.Pos(), "unsupported assignment target %T", lhs)
+			b.errf(s.Pos(), "unsupported assignment target %T", lhs)
 		}
 	default:
-		b.t.errf(s.Pos(), "unsupported assignment operator %s", s.Tok)
+		b.errf(s.Pos(), "unsupported assignment operator %s", s.Tok)
 	}
 }
 
@@ -176,16 +176,16 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 // through a tuple pattern.
 func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 	if s.Tok != token.DEFINE && s.Tok != token.ASSIGN {
-		b.t.errf(s.Pos(), "unsupported multi-assignment operator %s", s.Tok)
+		b.errf(s.Pos(), "unsupported multi-assignment operator %s", s.Tok)
 	}
 	isReassign := s.Tok == token.ASSIGN
-	fn, _ := b.t.callee(call).(*types.Func)
+	fn, _ := b.callee(call).(*types.Func)
 	if fn == nil {
-		b.t.errf(s.Pos(), "multi-assignment from a call requires a static callee")
+		b.errf(s.Pos(), "multi-assignment from a call requires a static callee")
 	}
 	sig := fn.Type().(*types.Signature)
 	if len(s.Lhs) != sig.Results().Len() {
-		b.t.errf(s.Pos(), "LHS count %d does not match callee result count %d",
+		b.errf(s.Pos(), "LHS count %d does not match callee result count %d",
 			len(s.Lhs), sig.Results().Len())
 	}
 	results, droppedErr := stripTrailingError(sig.Results())
@@ -193,18 +193,18 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 
 	str, monadic := b.exprTop(call, kind{})
 	if !monadic {
-		b.t.errf(s.Pos(), "multi-assignment RHS must be a Circuit-valued call")
+		b.errf(s.Pos(), "multi-assignment RHS must be a Circuit-valued call")
 	}
 
 	if droppedErr {
 		errIdent, ok := s.Lhs[len(s.Lhs)-1].(*ast.Ident)
 		if !ok {
-			b.t.errf(s.Lhs[len(s.Lhs)-1].Pos(), "err position must be an identifier")
+			b.errf(s.Lhs[len(s.Lhs)-1].Pos(), "err position must be an identifier")
 		}
 		if errIdent.Name != "_" {
-			obj := b.info().Defs[errIdent]
+			obj := b.info.Defs[errIdent]
 			if obj == nil {
-				obj = b.info().Uses[errIdent]
+				obj = b.info.Uses[errIdent]
 			}
 			if obj != nil {
 				b.errVars[obj] = true
@@ -229,22 +229,22 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 	bindPos := func(i int) (name string, isBlank bool) {
 		id, ok := s.Lhs[i].(*ast.Ident)
 		if !ok {
-			b.t.errf(s.Lhs[i].Pos(), "unsupported multi-assign target")
+			b.errf(s.Lhs[i].Pos(), "unsupported multi-assign target")
 		}
 		if id.Name == "_" {
 			return "_", true
 		}
 		if isReassign {
-			obj := b.info().Uses[id]
+			obj := b.info.Uses[id]
 			existing, ok := b.names[obj]
 			if !ok {
-				b.t.errf(id.Pos(), "reassignment to unknown variable %s", id.Name)
+				b.errf(id.Pos(), "reassignment to unknown variable %s", id.Name)
 			}
 			return existing, false
 		}
-		obj := b.info().Defs[id]
+		obj := b.info.Defs[id]
 		if obj == nil {
-			b.t.errf(id.Pos(), "%s must be a new binding here", id.Name)
+			b.errf(id.Pos(), "%s must be a new binding here", id.Name)
 		}
 		return b.bind(obj), false
 	}
@@ -259,9 +259,9 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 			b.push(reassign{name: name, rhs: str, monadic: true})
 			return
 		}
-		k := b.t.classify(results.At(0).Type(), s.Pos())
+		k := b.classify(results.At(0).Type(), s.Pos())
 		mut := false
-		if obj := b.info().Defs[s.Lhs[0].(*ast.Ident)]; obj != nil && b.muts[obj] {
+		if obj := b.info.Defs[s.Lhs[0].(*ast.Ident)]; obj != nil && b.muts[obj] {
 			mut = true
 		}
 		ascr := ""
@@ -296,12 +296,12 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 			case *ast.IndexExpr:
 				id, ok := l.X.(*ast.Ident)
 				if !ok {
-					b.t.errf(l.Pos(), "only simple `xs[i]` targets are supported in multi-assign")
+					b.errf(l.Pos(), "only simple `xs[i]` targets are supported in multi-assign")
 				}
-				obj := b.info().Uses[id]
+				obj := b.info.Uses[id]
 				name, ok := b.names[obj]
 				if !ok {
-					b.t.errf(l.Pos(), "assignment to unknown variable %s", id.Name)
+					b.errf(l.Pos(), "assignment to unknown variable %s", id.Name)
 				}
 				parts = append(parts, tuplePart{
 					kind:    tuplePartIndex,
@@ -310,7 +310,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 					idxExpr: b.natAtom(l.Index),
 				})
 			default:
-				b.t.errf(lhs.Pos(), "unsupported multi-assign target %T", lhs)
+				b.errf(lhs.Pos(), "unsupported multi-assign target %T", lhs)
 			}
 		}
 		b.push(tupleAssign{tmp: tmp, rhs: str, parts: parts})
@@ -344,11 +344,11 @@ func (b *funcBody) discard(rhs ast.Expr) {
 func (b *funcBody) exprStmt(s *ast.ExprStmt) {
 	call, ok := s.X.(*ast.CallExpr)
 	if !ok {
-		b.t.errf(s.Pos(), "unsupported expression statement")
+		b.errf(s.Pos(), "unsupported expression statement")
 	}
 	// Bare `copy(dst, src)`: value-semantic rebind of dst; discard the count.
 	if id, ok := unparen(call.Fun).(*ast.Ident); ok {
-		if bi, ok := b.info().Uses[id].(*types.Builtin); ok && bi.Name() == "copy" {
+		if bi, ok := b.info.Uses[id].(*types.Builtin); ok && bi.Name() == "copy" {
 			b.emitCopy(call)
 			return
 		}
@@ -368,31 +368,31 @@ func (b *funcBody) exprStmt(s *ast.ExprStmt) {
 // bound ident (`copy(xs[a:b], src)`), which splices src into the range.
 func (b *funcBody) emitCopy(call *ast.CallExpr) {
 	if len(call.Args) != 2 {
-		b.t.errf(call.Pos(), "copy expects two arguments")
+		b.errf(call.Pos(), "copy expects two arguments")
 	}
 	dstExpr := unparen(call.Args[0])
-	src := b.atom(call.Args[1], b.t.kindOf(call.Args[1]))
+	src := b.atom(call.Args[1], b.kindOf(call.Args[1]))
 
 	switch dst := dstExpr.(type) {
 	case *ast.Ident:
-		obj := b.info().Uses[dst]
+		obj := b.info.Uses[dst]
 		name, ok := b.names[obj]
 		if !ok {
-			b.t.errf(dst.Pos(), "copy target is not a bound variable")
+			b.errf(dst.Pos(), "copy target is not a bound variable")
 		}
 		b.push(copyFull{name: name, src: src})
 	case *ast.SliceExpr:
 		if dst.Slice3 {
-			b.t.errf(dst.Pos(), "three-index slice in copy target")
+			b.errf(dst.Pos(), "three-index slice in copy target")
 		}
 		id, ok := unparen(dst.X).(*ast.Ident)
 		if !ok {
-			b.t.errf(dst.Pos(), "copy target must be a slice of a bound variable")
+			b.errf(dst.Pos(), "copy target must be a slice of a bound variable")
 		}
-		obj := b.info().Uses[id]
+		obj := b.info.Uses[id]
 		name, ok := b.names[obj]
 		if !ok {
-			b.t.errf(id.Pos(), "copy target is not a bound variable")
+			b.errf(id.Pos(), "copy target is not a bound variable")
 		}
 		lo := "0"
 		if dst.Low != nil {
@@ -404,7 +404,7 @@ func (b *funcBody) emitCopy(call *ast.CallExpr) {
 		}
 		b.push(copySlice{name: name, lo: lo, hi: hi, src: src})
 	default:
-		b.t.errf(dstExpr.Pos(), "copy destination must be a variable or a slice expression")
+		b.errf(dstExpr.Pos(), "copy destination must be a variable or a slice expression")
 	}
 }
 
@@ -412,7 +412,7 @@ func (b *funcBody) emitCopy(call *ast.CallExpr) {
 // helpers), so it can stand alone as a do-statement.
 func (b *funcBody) callIsUnit(call *ast.CallExpr) bool {
 	if sel, ok := unparen(call.Fun).(*ast.SelectorExpr); ok {
-		if id, ok := unparen(sel.X).(*ast.Ident); ok && b.api != nil && b.info().Uses[id] == b.api {
+		if id, ok := unparen(sel.X).(*ast.Ident); ok && b.api != nil && b.info.Uses[id] == b.api {
 			switch sel.Sel.Name {
 			case "AssertIsEqual", "AssertIsDifferent", "AssertIsBoolean", "AssertIsLessOrEqual":
 				return true
@@ -420,7 +420,7 @@ func (b *funcBody) callIsUnit(call *ast.CallExpr) bool {
 			return false
 		}
 	}
-	if fn, ok := b.t.callee(call).(*types.Func); ok {
+	if fn, ok := b.callee(call).(*types.Func); ok {
 		// abstractor.Call/CallVoid/Call1/... are rewritten to the
 		// gadget's DefineGadget, whose Lean return type isn't Unit
 		// (even for CallVoid). Always discard-bind at statement level.
@@ -435,20 +435,20 @@ func (b *funcBody) callIsUnit(call *ast.CallExpr) bool {
 func (b *funcBody) forStmt(s *ast.ForStmt) {
 	init, ok := s.Init.(*ast.AssignStmt)
 	if !ok || init.Tok != token.DEFINE || len(init.Lhs) != 1 {
-		b.t.errf(s.Pos(), "only `for i := lo; i < hi; i++` loops are supported")
+		b.errf(s.Pos(), "only `for i := lo; i < hi; i++` loops are supported")
 	}
 	id := init.Lhs[0].(*ast.Ident)
-	obj := b.info().Defs[id]
+	obj := b.info.Defs[id]
 	cond, ok := s.Cond.(*ast.BinaryExpr)
 	if !ok || cond.Op != token.LSS {
-		b.t.errf(s.Pos(), "only `i < hi` loop conditions are supported")
+		b.errf(s.Pos(), "only `i < hi` loop conditions are supported")
 	}
-	if cid, ok := unparen(cond.X).(*ast.Ident); !ok || b.info().Uses[cid] != obj {
-		b.t.errf(s.Pos(), "loop condition must test the loop variable")
+	if cid, ok := unparen(cond.X).(*ast.Ident); !ok || b.info.Uses[cid] != obj {
+		b.errf(s.Pos(), "loop condition must test the loop variable")
 	}
 	post, ok := s.Post.(*ast.IncDecStmt)
 	if !ok || post.Tok != token.INC {
-		b.t.errf(s.Pos(), "only `i++` loop increments are supported")
+		b.errf(s.Pos(), "only `i++` loop increments are supported")
 	}
 	// Go re-evaluates the bound every iteration; the translation evaluates it
 	// once at loop entry. Reject bodies that reassign what the bound reads.
@@ -464,17 +464,17 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 
 func (b *funcBody) rangeStmt(s *ast.RangeStmt) {
 	if s.Key == nil {
-		b.t.errf(s.Pos(), "`for range` without variables is not supported")
+		b.errf(s.Pos(), "`for range` without variables is not supported")
 	}
 	if s.Tok != token.DEFINE {
-		b.t.errf(s.Pos(), "only `for i, v := range` loops are supported")
+		b.errf(s.Pos(), "only `for i, v := range` loops are supported")
 	}
-	xk := b.t.kindOf(s.X)
+	xk := b.kindOf(s.X)
 	if xk.base == baseInt64 || xk.depth < 1 {
-		b.t.errf(s.X.Pos(), "range is only supported over slices/arrays of Variable")
+		b.errf(s.X.Pos(), "range is only supported over slices/arrays of Variable")
 	}
 	if xk.depth > 1 && s.Value != nil {
-		b.t.errf(s.Value.Pos(), "ranging with a value over nested slices aliases the inner slices")
+		b.errf(s.Value.Pos(), "ranging with a value over nested slices aliases the inner slices")
 	}
 	xs := b.atom(s.X, xk)
 
@@ -496,18 +496,18 @@ func (b *funcBody) rangeStmt(s *ast.RangeStmt) {
 
 	if keyId.Name == "_" && valId != nil {
 		// `for _, v := range xs` iterates directly.
-		vname := b.bind(b.info().Defs[valId])
+		vname := b.bind(b.info.Defs[valId])
 		body := b.collectBlock(s.Body.List, true, nil)
 		b.push(forSlice{val: vname, xs: xs, body: body})
 		return
 	}
 
-	iname := b.bind(b.info().Defs[keyId])
+	iname := b.bind(b.info.Defs[keyId])
 	// forIndexed's renderer prepends `let <val> := <xs>[<idx>.toInt.toNat]!`
 	// to the body when val is non-empty, so we just bind the name here.
 	vname := ""
 	if valId != nil {
-		vname = b.bind(b.info().Defs[valId])
+		vname = b.bind(b.info.Defs[valId])
 	}
 	body := b.collectBlock(s.Body.List, true, nil)
 	b.push(forIndexed{idx: iname, val: vname, xs: xs, body: body})
@@ -534,7 +534,7 @@ func (b *funcBody) isErrCheck(s *ast.IfStmt) bool {
 	if errIdent == nil {
 		return false
 	}
-	obj := b.info().Uses[errIdent]
+	obj := b.info.Uses[errIdent]
 	if obj == nil || !b.errVars[obj] {
 		return false
 	}
@@ -576,7 +576,7 @@ func (b *funcBody) initErrCheck(s *ast.IfStmt) (bool, *ast.CallExpr) {
 	if !ok {
 		return false, nil
 	}
-	fn, ok := b.t.callee(call).(*types.Func)
+	fn, ok := b.callee(call).(*types.Func)
 	if fn == nil || !ok {
 		return false, nil
 	}
@@ -616,7 +616,7 @@ func (b *funcBody) ifStmt(s *ast.IfStmt) {
 		// discard so its circuit side effects still land; otherwise it's
 		// pure Go plumbing (e.g. `validateLayout`) and the whole if is
 		// dropped.
-		fn := b.t.callee(call).(*types.Func)
+		fn := b.callee(call).(*types.Func)
 		sig := fn.Type().(*types.Signature)
 		takesAPI := false
 		for i := 0; i < sig.Params().Len(); i++ {
@@ -632,14 +632,14 @@ func (b *funcBody) ifStmt(s *ast.IfStmt) {
 		return
 	}
 	if s.Init != nil {
-		b.t.errf(s.Pos(), "if statements with init clauses are not supported")
+		b.errf(s.Pos(), "if statements with init clauses are not supported")
 	}
 	then := b.collectBlock(s.Body.List, true, nil)
 	var els *block
 	if s.Else != nil {
 		elsBlock, ok := s.Else.(*ast.BlockStmt)
 		if !ok {
-			b.t.errf(s.Else.Pos(), "else-if chains are not supported")
+			b.errf(s.Else.Pos(), "else-if chains are not supported")
 		}
 		e := b.collectBlock(elsBlock.List, true, nil)
 		els = &e
@@ -665,8 +665,8 @@ func (b *funcBody) cond(e ast.Expr) string {
 		case token.LOR:
 			return fmt.Sprintf("(%s ∨ %s)", b.cond(e.X), b.cond(e.Y))
 		}
-		if b.t.kindOf(e.X).base != baseInt64 {
-			b.t.errf(e.Pos(), "conditions may only compare Go integers")
+		if b.kindOf(e.X).base != baseInt64 {
+			b.errf(e.Pos(), "conditions may only compare Go integers")
 		}
 		var op string
 		switch e.Op {
@@ -683,24 +683,24 @@ func (b *funcBody) cond(e ast.Expr) string {
 		case token.GEQ:
 			op = "≥"
 		default:
-			b.t.errf(e.Pos(), "unsupported condition operator %s", e.Op)
+			b.errf(e.Pos(), "unsupported condition operator %s", e.Op)
 		}
 		return fmt.Sprintf("%s %s %s", b.atom(e.X, kind{base: baseInt64}), op, b.atom(e.Y, kind{base: baseInt64}))
 	}
 	// Fall-through: expression must be Bool-valued (e.g. `s.zone`).
-	if b.t.kindOf(e).base == baseBool {
+	if b.kindOf(e).base == baseBool {
 		s, _ := b.exprBare(e, kind{base: baseBool})
 		return s
 	}
-	b.t.errf(e.Pos(), "unsupported condition %T", e)
+	b.errf(e.Pos(), "unsupported condition %T", e)
 	return ""
 }
 
 func (b *funcBody) returnStmt(s *ast.ReturnStmt) {
 	if b.isMain {
 		// Define returns error; only `return nil` is supported.
-		if len(s.Results) != 1 || !b.info().Types[s.Results[0]].IsNil() {
-			b.t.errf(s.Pos(), "Define may only `return nil`")
+		if len(s.Results) != 1 || !b.info.Types[s.Results[0]].IsNil() {
+			b.errf(s.Pos(), "Define may only `return nil`")
 		}
 		return
 	}
@@ -729,10 +729,10 @@ func (b *funcBody) returnStmt(s *ast.ReturnStmt) {
 			b.push(ret{unit: true})
 			return
 		}
-		b.t.errf(s.Pos(), "unexpected return value")
+		b.errf(s.Pos(), "unexpected return value")
 	}
 	if len(results) != len(b.result) {
-		b.t.errf(s.Pos(), "return count mismatch: got %d, want %d", len(results), len(b.result))
+		b.errf(s.Pos(), "return count mismatch: got %d, want %d", len(results), len(b.result))
 	}
 	if len(b.result) == 1 {
 		str, monadic := b.exprTop(results[0], b.result[0])

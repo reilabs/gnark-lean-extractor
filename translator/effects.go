@@ -28,9 +28,9 @@ type effectSummary struct {
 //     one without the other).
 //  3. enforce  — walk call sites and reject arg/result shapes that would
 //     let Go-visible aliasing survive the translation.
-func (t *translator) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramObjs []types.Object) {
-	info := t.pkg.TypesInfo
-	reg := t.emit.funcReg
+func (b *funcBody) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramObjs []types.Object) {
+	info := b.pkg.TypesInfo
+	reg := b.emit.funcReg
 	paramIdx := map[types.Object]int{}
 	for i, o := range paramObjs {
 		if o != nil {
@@ -38,14 +38,14 @@ func (t *translator) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramOb
 		}
 	}
 	summary := effectSummary{
-		dirtyParams:  t.computeDirtyParams(info, reg, body, paramIdx),
-		aliasReturns: t.computeAliasReturns(fn, body, paramIdx),
+		dirtyParams:  b.computeDirtyParams(info, reg, body, paramIdx),
+		aliasReturns: b.computeAliasReturns(fn, body, paramIdx),
 	}
 	if fn != nil {
 		reg.slot(fn).summary = summary
 	}
 	rebinds, returnCalls := collectRebindsReturns(info, body)
-	t.enforceCallSites(body, rebinds, returnCalls)
+	b.enforceCallSites(body, rebinds, returnCalls)
 }
 
 // paramOf returns the parameter index of e, or -1 if e is not (an ident
@@ -62,12 +62,12 @@ func paramOf(info *types.Info, paramIdx map[types.Object]int, e ast.Expr) int {
 // resultAliases returns the named variables a call's result may alias
 // (per the callee's aliasReturns summary, recursing through nested calls),
 // and whether it may alias something unnamed (a field or slice element).
-func (t *translator) resultAliases(call *ast.CallExpr) (map[types.Object]bool, bool) {
-	info := t.pkg.TypesInfo
-	fn, _ := t.callee(call).(*types.Func)
+func (b *funcBody) resultAliases(call *ast.CallExpr) (map[types.Object]bool, bool) {
+	info := b.pkg.TypesInfo
+	fn, _ := b.callee(call).(*types.Func)
 	objs := map[types.Object]bool{}
 	external := false
-	for q := range t.emit.funcReg.summary(fn).aliasReturns {
+	for q := range b.emit.funcReg.summary(fn).aliasReturns {
 		if q >= len(call.Args) {
 			continue
 		}
@@ -77,7 +77,7 @@ func (t *translator) resultAliases(call *ast.CallExpr) (map[types.Object]bool, b
 				objs[obj] = true
 			}
 		case *ast.CallExpr:
-			o2, e2 := t.resultAliases(arg)
+			o2, e2 := b.resultAliases(arg)
 			for o := range o2 {
 				objs[o] = true
 			}
@@ -94,7 +94,7 @@ func (t *translator) resultAliases(call *ast.CallExpr) (map[types.Object]bool, b
 // computeDirtyParams walks the body flagging slice parameters whose backing
 // array is written — either by a direct `xs[i] = v` or by being passed to a
 // callee that itself writes.
-func (t *translator) computeDirtyParams(info *types.Info, reg *funcRegistry, body *ast.BlockStmt, paramIdx map[types.Object]int) map[int]bool {
+func (b *funcBody) computeDirtyParams(info *types.Info, reg *funcRegistry, body *ast.BlockStmt, paramIdx map[types.Object]int) map[int]bool {
 	dirty := map[int]bool{}
 	mark := func(e ast.Expr) {
 		if i := paramOf(info, paramIdx, e); i >= 0 {
@@ -112,7 +112,7 @@ func (t *translator) computeDirtyParams(info *types.Info, reg *funcRegistry, bod
 				}
 			}
 		case *ast.CallExpr:
-			fn, _ := t.callee(n).(*types.Func)
+			fn, _ := b.callee(n).(*types.Func)
 			for p := range reg.summary(fn).dirtyParams {
 				if p < len(n.Args) {
 					mark(n.Args[p])
@@ -165,15 +165,15 @@ func collectRebindsReturns(info *types.Info, body *ast.BlockStmt) (
 // param names and returned calls matter. Returns nil for functions where
 // alias analysis doesn't apply (Define, non-slice results, `interface{}`
 // returns whose concrete type is inferred elsewhere).
-func (t *translator) computeAliasReturns(fn *types.Func, body *ast.BlockStmt, paramIdx map[types.Object]int) map[int]bool {
+func (b *funcBody) computeAliasReturns(fn *types.Func, body *ast.BlockStmt, paramIdx map[types.Object]int) map[int]bool {
 	if fn == nil {
 		return nil
 	}
-	info := t.pkg.TypesInfo
+	info := b.pkg.TypesInfo
 	sig := fn.Type().(*types.Signature)
 	results, _ := stripTrailingError(sig.Results())
 	if results.Len() != 1 || isEmptyInterface(results.At(0).Type()) ||
-		t.classify(results.At(0).Type(), fn.Pos()).depth == 0 {
+		b.classify(results.At(0).Type(), fn.Pos()).depth == 0 {
 		return nil
 	}
 	ret := map[int]bool{}
@@ -188,9 +188,9 @@ func (t *translator) computeAliasReturns(fn *types.Func, body *ast.BlockStmt, pa
 				ret[i] = true
 			}
 		case *ast.CallExpr:
-			objs, external := t.resultAliases(r)
+			objs, external := b.resultAliases(r)
 			if external {
-				t.errf(rs.Pos(), "returns a slice that may alias a field or slice element")
+				b.errf(rs.Pos(), "returns a slice that may alias a field or slice element")
 			}
 			for o := range objs {
 				if i, ok := paramIdx[o]; ok {
@@ -198,7 +198,7 @@ func (t *translator) computeAliasReturns(fn *types.Func, body *ast.BlockStmt, pa
 				}
 			}
 		case *ast.IndexExpr, *ast.SelectorExpr:
-			t.errf(rs.Pos(), "returns an alias of a slice element or field")
+			b.errf(rs.Pos(), "returns an alias of a slice element or field")
 		}
 		return true
 	})
@@ -209,19 +209,19 @@ func (t *translator) computeAliasReturns(fn *types.Func, body *ast.BlockStmt, pa
 // would let Go-visible aliasing survive the translation. Written-position
 // args must be fresh values or the rebind form `x = f(..., x)`; results
 // that may alias an argument must be bound back to that same variable.
-func (t *translator) enforceCallSites(
+func (b *funcBody) enforceCallSites(
 	body *ast.BlockStmt,
 	rebinds map[*ast.CallExpr]types.Object,
 	returnCalls map[*ast.CallExpr]bool,
 ) {
-	info := t.pkg.TypesInfo
-	reg := t.emit.funcReg
+	info := b.pkg.TypesInfo
+	reg := b.emit.funcReg
 	ast.Inspect(body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		callee, _ := t.callee(call).(*types.Func)
+		callee, _ := b.callee(call).(*types.Func)
 		for p := range reg.summary(callee).dirtyParams {
 			if p >= len(call.Args) {
 				continue
@@ -230,15 +230,15 @@ func (t *translator) enforceCallSites(
 			case *ast.CompositeLit:
 				// Fresh value: nothing else observes its backing array.
 			case *ast.CallExpr:
-				if objs, external := t.resultAliases(arg); external || len(objs) > 0 {
-					t.errf(call.Args[p].Pos(),
+				if objs, external := b.resultAliases(arg); external || len(objs) > 0 {
+					b.errf(call.Args[p].Pos(),
 						"%s writes the elements of this argument, whose backing array is aliased elsewhere",
 						callee.Name())
 				}
 			case *ast.Ident:
 				obj := info.Uses[arg]
 				if obj == nil || rebinds[call] != obj {
-					t.errf(arg.Pos(),
+					b.errf(arg.Pos(),
 						"%s writes the elements of this argument, which Go callers observe through aliasing but the translation does not — use the form %s = %s(..., %s)",
 						callee.Name(), arg.Name, callee.Name(), arg.Name)
 				}
@@ -247,13 +247,13 @@ func (t *translator) enforceCallSites(
 						continue
 					}
 					if id, ok := unparen(other).(*ast.Ident); ok && info.Uses[id] == obj {
-						t.errf(other.Pos(),
+						b.errf(other.Pos(),
 							"%s is passed to %s more than once while %s writes its elements — Go sees those writes through both parameters, the translation does not",
 							arg.Name, callee.Name(), callee.Name())
 					}
 				}
 			default:
-				t.errf(call.Args[p].Pos(),
+				b.errf(call.Args[p].Pos(),
 					"%s writes the elements of this argument — pass a variable in the form x = %s(..., x) or a fresh value",
 					callee.Name(), callee.Name())
 			}
@@ -261,13 +261,13 @@ func (t *translator) enforceCallSites(
 		if returnCalls[call] {
 			return true
 		}
-		objs, external := t.resultAliases(call)
+		objs, external := b.resultAliases(call)
 		if external {
-			t.errf(call.Pos(), "the result of %s may alias a field or slice element", callee.Name())
+			b.errf(call.Pos(), "the result of %s may alias a field or slice element", callee.Name())
 		}
 		for o := range objs {
 			if o != rebinds[call] {
-				t.errf(call.Pos(),
+				b.errf(call.Pos(),
 					"the result of %s may alias %s — bind it back to the same variable (%s = %s(..., %s)) so the backing array keeps a single name",
 					callee.Name(), o.Name(), o.Name(), callee.Name(), o.Name())
 			}

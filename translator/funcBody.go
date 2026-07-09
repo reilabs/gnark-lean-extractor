@@ -5,6 +5,8 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+
+	"golang.org/x/tools/go/packages"
 )
 
 // funcBody translates the body of a single Go function into a []stmt IR
@@ -13,7 +15,13 @@ import (
 // buffer, no running indent, no last-statement cursor: those decisions are
 // structural properties of the finished tree, not of the walk order.
 type funcBody struct {
-	t     *translator
+	// Shared translation state (immutable per body; copied when spawning
+	// a child).
+	cfg  Config
+	pkg  *packages.Package
+	info *types.Info // == pkg.TypesInfo, cached
+	emit *emitter
+
 	stmts []stmt // stmts accumulated at the *current* block level
 
 	// isPkgInit marks a funcBody used only as an expression walker for
@@ -68,14 +76,12 @@ func (b *funcBody) collectBlock(stmts []ast.Stmt, allowReassignEnd bool, prologu
 	return block{stmts: inner, allowReassignEnd: allowReassignEnd}
 }
 
-func (b *funcBody) info() *types.Info { return b.t.pkg.TypesInfo }
-
 // scanMut records which locals are reassigned so their bindings become
 // `let mut`.
 func (b *funcBody) scanMut(body *ast.BlockStmt) {
 	markIdent := func(e ast.Expr) {
 		if id, ok := unparen(e).(*ast.Ident); ok {
-			if obj := b.info().Uses[id]; obj != nil {
+			if obj := b.info.Uses[id]; obj != nil {
 				b.muts[obj] = true
 			}
 		}
@@ -89,18 +95,18 @@ func (b *funcBody) scanMut(body *ast.BlockStmt) {
 			for _, l := range n.Lhs {
 				switch l := l.(type) {
 				case *ast.Ident:
-					if obj := b.info().Uses[l]; obj != nil {
+					if obj := b.info.Uses[l]; obj != nil {
 						b.muts[obj] = true
 					}
 				case *ast.IndexExpr:
 					if id, ok := l.X.(*ast.Ident); ok {
-						if obj := b.info().Uses[id]; obj != nil {
+						if obj := b.info.Uses[id]; obj != nil {
 							b.muts[obj] = true
 						}
 					}
 				case *ast.SelectorExpr:
 					if id, ok := l.X.(*ast.Ident); ok {
-						if obj := b.info().Uses[id]; obj != nil {
+						if obj := b.info.Uses[id]; obj != nil {
 							b.muts[obj] = true
 						}
 					}
@@ -109,7 +115,7 @@ func (b *funcBody) scanMut(body *ast.BlockStmt) {
 		case *ast.CallExpr:
 			// `copy(dst, src)` rebinds dst under value semantics.
 			if id, ok := unparen(n.Fun).(*ast.Ident); ok {
-				if b, ok := b.info().Uses[id].(*types.Builtin); ok && b.Name() == "copy" && len(n.Args) == 2 {
+				if bi, ok := b.info.Uses[id].(*types.Builtin); ok && bi.Name() == "copy" && len(n.Args) == 2 {
 					switch dst := unparen(n.Args[0]).(type) {
 					case *ast.Ident:
 						markIdent(dst)
@@ -130,12 +136,25 @@ func (b *funcBody) bind(obj types.Object) string {
 	return name
 }
 
+// bindLocal classifies typ, registers name for obj (skipped when obj is nil,
+// as with `_` receivers), and returns the Lean binder `(sanitized : leanType)`.
+// Shared between struct-field, parameter, and receiver binder construction in
+// translateDefine / translateFunc.
+func (b *funcBody) bindLocal(name string, obj types.Object, typ types.Type, pos token.Pos) string {
+	k := b.classify(typ, pos)
+	sanitized := sanitize(name)
+	if obj != nil {
+		b.names[obj] = sanitized
+	}
+	return fmt.Sprintf("(%s : %s)", sanitized, b.leanType(k))
+}
+
 // readVars collects the tracked variables an expression reads.
 func (b *funcBody) readVars(e ast.Expr) map[types.Object]bool {
 	vars := map[types.Object]bool{}
 	ast.Inspect(e, func(n ast.Node) bool {
 		if id, ok := n.(*ast.Ident); ok {
-			if obj := b.info().Uses[id]; obj != nil {
+			if obj := b.info.Uses[id]; obj != nil {
 				if _, tracked := b.names[obj]; tracked {
 					vars[obj] = true
 				}
@@ -160,16 +179,16 @@ func (b *funcBody) forbidBodyAssign(body ast.Node, vars map[types.Object]bool, e
 		for _, l := range as.Lhs {
 			switch l := l.(type) {
 			case *ast.Ident:
-				if obj := b.info().Uses[l]; obj != nil && vars[obj] {
-					b.t.errf(as.Pos(), "the loop body reassigns %s, %s", l.Name, why)
+				if obj := b.info.Uses[l]; obj != nil && vars[obj] {
+					b.errf(as.Pos(), "the loop body reassigns %s, %s", l.Name, why)
 				}
 			case *ast.IndexExpr:
 				if !elemWrites {
 					continue
 				}
 				if id, ok := unparen(l.X).(*ast.Ident); ok {
-					if obj := b.info().Uses[id]; obj != nil && vars[obj] {
-						b.t.errf(as.Pos(), "the loop body writes elements of %s, %s", id.Name, why)
+					if obj := b.info.Uses[id]; obj != nil && vars[obj] {
+						b.errf(as.Pos(), "the loop body writes elements of %s, %s", id.Name, why)
 					}
 				}
 			}
@@ -187,7 +206,7 @@ func (b *funcBody) aliasGuard(k kind, rhs ast.Expr) {
 	}
 	switch unparen(rhs).(type) {
 	case *ast.Ident, *ast.IndexExpr, *ast.SelectorExpr:
-		b.t.errf(rhs.Pos(), "this binding aliases a slice — Go element writes are visible through aliases but the translation's are not; bind slices from fresh values (make, literals, function results)")
+		b.errf(rhs.Pos(), "this binding aliases a slice — Go element writes are visible through aliases but the translation's are not; bind slices from fresh values (make, literals, function results)")
 	}
 }
 
@@ -203,7 +222,7 @@ func (b *funcBody) resolveObj(obj types.Object, pos token.Pos) (string, bool) {
 		return name, true
 	}
 	if obj != nil && obj == b.recv {
-		return b.t.synthesizeCircuitLiteral(pos), true
+		return b.synthesizeCircuitLiteral(pos), true
 	}
 	return "", false
 }
@@ -214,7 +233,7 @@ func (b *funcBody) isAPI(obj types.Object) bool {
 
 func (b *funcBody) liftMonadic(str string, pos token.Pos) string {
 	if b.isPkgInit {
-		b.t.errf(pos, "package var initializer cannot contain a monadic (Circuit-valued) expression")
+		b.errf(pos, "package var initializer cannot contain a monadic (Circuit-valued) expression")
 	}
 	tmp := fmt.Sprintf("t_%d", b.tmp)
 	b.tmp++

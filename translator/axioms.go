@@ -11,19 +11,19 @@ import (
 // gadget whose DefineGadget method lives in a foreign package. The wrapper's
 // return kind (F, List F, …) comes from the abstractor variant at the call
 // site: Call → F, CallVoid → Unit, Call1/2/3 → List{1,2,3} F.
-func (t *translator) ensureGadgetAxiom(defineFn *types.Func, gadgetType *types.Named, wrapperName string, pos token.Pos) {
-	slot := t.emit.funcReg.slot(defineFn)
+func (b *funcBody) ensureGadgetAxiom(defineFn *types.Func, gadgetType *types.Named, wrapperName string, pos token.Pos) {
+	slot := b.emit.funcReg.slot(defineFn)
 	if slot.done {
 		return
 	}
-	structName := t.emit.structReg.name(gadgetType)
+	structName := b.emit.structReg.name(gadgetType)
 	if structName == "" {
-		t.errf(pos, "gadget %s has no registered structure", gadgetType.Obj().Name())
+		b.errf(pos, "gadget %s has no registered structure", gadgetType.Obj().Name())
 	}
 	predName := structName + "_DefineGadget_pred"
 	defName := structName + ".DefineGadget"
-	t.emit.alloc.reserveExact(predName)
-	t.emit.alloc.reserveExact(defName)
+	b.emit.alloc.reserveExact(predName)
+	b.emit.alloc.reserveExact(defName)
 	slot.leanName = defName
 	slot.done = true
 
@@ -44,22 +44,22 @@ func (t *translator) ensureGadgetAxiom(defineFn *types.Func, gadgetType *types.N
 		case "Call3":
 			resKind = kind{depth: 3}
 		default:
-			t.errf(pos, "unsupported abstractor variant %s", wrapperName)
+			b.errf(pos, "unsupported abstractor variant %s", wrapperName)
 		}
-		axiom = fmt.Sprintf("axiom %s : %s → %s → Prop", predName, structName, t.leanType(resKind))
+		axiom = fmt.Sprintf("axiom %s : %s → %s → Prop", predName, structName, b.leanType(resKind))
 		def = fmt.Sprintf("def %s (g : %s) : Circuit %s := fun k =>\n  ∃ out, %s g out ∧ k out",
-			defName, structName, t.leanTypeParen(resKind), predName)
+			defName, structName, b.leanTypeParen(resKind), predName)
 	}
-	t.emit.axioms = append(t.emit.axioms, axiom+"\n"+def)
+	b.emit.axioms = append(b.emit.axioms, axiom+"\n"+def)
 }
 
 // ensureAxiom emits an axiom + wrapper for a blackboxed function. Returns
 // the emitted Lean name — which may differ from the requested one if a
 // collision (e.g. with the outer namespace) forced a suffix.
-func (t *translator) ensureAxiom(leanName string, fn *types.Func, pos token.Pos) string {
-	return t.emit.axiomReg.getOrRegister(leanName, func(actual string) string {
+func (b *funcBody) ensureAxiom(leanName string, fn *types.Func, pos token.Pos) string {
+	return b.emit.axiomReg.getOrRegister(leanName, func(actual string) string {
 		// Also reserve the companion predicate name so it can't be shadowed.
-		t.emit.alloc.reserveExact(actual + "_pred")
+		b.emit.alloc.reserveExact(actual + "_pred")
 
 		sig := fn.Type().(*types.Signature)
 		var binders, predArgTypes, argNames []string
@@ -68,13 +68,13 @@ func (t *translator) ensureAxiom(leanName string, fn *types.Func, pos token.Pos)
 			if isAPI(p.Type()) {
 				continue
 			}
-			k := t.classify(p.Type(), pos)
+			k := b.classify(p.Type(), pos)
 			name := sanitize(p.Name())
 			if name == "" || name == "_" {
 				name = fmt.Sprintf("x%d", i)
 			}
-			binders = append(binders, fmt.Sprintf("(%s : %s)", name, t.leanType(k)))
-			predArgTypes = append(predArgTypes, t.leanType(k))
+			binders = append(binders, fmt.Sprintf("(%s : %s)", name, b.leanType(k)))
+			predArgTypes = append(predArgTypes, b.leanType(k))
 			argNames = append(argNames, name)
 		}
 
@@ -82,8 +82,8 @@ func (t *translator) ensureAxiom(leanName string, fn *types.Func, pos token.Pos)
 		resKinds := make([]kind, results.Len())
 		resTypes := make([]string, results.Len())
 		for i := range resKinds {
-			resKinds[i] = t.classify(results.At(i).Type(), pos)
-			resTypes[i] = t.leanType(resKinds[i])
+			resKinds[i] = b.classify(results.At(i).Type(), pos)
+			resTypes[i] = b.leanType(resKinds[i])
 		}
 
 		// Predicate signatures collapse the arrow chain: if there are no
@@ -111,7 +111,7 @@ func (t *translator) ensureAxiom(leanName string, fn *types.Func, pos token.Pos)
 		case 1:
 			axiom = fmt.Sprintf("axiom %s_pred : %s%s → Prop", actual, inSig, resTypes[0])
 			def = fmt.Sprintf("def %s%s : Circuit %s := fun k =>\n  ∃ out, %s_pred%s out ∧ k out",
-				actual, binderSig, t.leanTypeParen(resKinds[0]), actual, inArgs)
+				actual, binderSig, b.leanTypeParen(resKinds[0]), actual, inArgs)
 		default:
 			outNames := make([]string, len(resKinds))
 			for i := range outNames {

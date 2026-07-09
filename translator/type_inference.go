@@ -31,7 +31,7 @@ type kind struct {
 	opaque string       // set iff base == baseOpaque
 }
 
-func (t *translator) leanType(k kind) string {
+func (b *funcBody) leanType(k kind) string {
 	var s string
 	switch k.base {
 	case baseInt64:
@@ -41,7 +41,7 @@ func (t *translator) leanType(k kind) string {
 	case baseOpaque:
 		s = k.opaque
 	case baseStruct:
-		s = t.emit.structReg.name(k.named)
+		s = b.emit.structReg.name(k.named)
 	default:
 		s = "F"
 	}
@@ -57,8 +57,8 @@ func (t *translator) leanType(k kind) string {
 
 // leanTypeParen renders the type parenthesized when needed as an argument of
 // `Circuit`.
-func (t *translator) leanTypeParen(k kind) string {
-	s := t.leanType(k)
+func (b *funcBody) leanTypeParen(k kind) string {
+	s := b.leanType(k)
 	if strings.Contains(s, " ") {
 		return "(" + s + ")"
 	}
@@ -132,7 +132,7 @@ func stripTrailingError(results *types.Tuple) (*types.Tuple, bool) {
 	return types.NewTuple(kept...), true
 }
 
-func (t *translator) classify(typ types.Type, pos token.Pos) kind {
+func (b *funcBody) classify(typ types.Type, pos token.Pos) kind {
 	if isVariable(typ) {
 		return kind{}
 	}
@@ -151,23 +151,23 @@ func (t *translator) classify(typ types.Type, pos token.Pos) kind {
 	// records by reference, but the translation is value-semantic, so
 	// `*T` classifies as `T`.
 	if p, ok := typ.(*types.Pointer); ok {
-		return t.classify(p.Elem(), pos)
+		return b.classify(p.Elem(), pos)
 	}
 	// Config-declared opaque types: generic instantiations or foreign
 	// structs the caller has explicitly declined to model. Emit an
 	// `axiom X : Type` and return an opaque kind.
-	if leanName, ok := t.opaqueLeanName(typ); ok {
-		t.emit.opaqueReg.register(leanName)
+	if leanName, ok := b.opaqueLeanName(typ); ok {
+		b.emit.opaqueReg.register(leanName)
 		return kind{base: baseOpaque, opaque: leanName}
 	}
 	// Non-opaque aliases: recurse into the target so downstream sees the
 	// structural type.
 	if alias, ok := typ.(*types.Alias); ok {
-		return t.classify(types.Unalias(alias), pos)
+		return b.classify(types.Unalias(alias), pos)
 	}
 	if named, ok := typ.(*types.Named); ok {
 		if st, ok := named.Underlying().(*types.Struct); ok {
-			t.registerStruct(named, st, pos)
+			b.registerStruct(named, st, pos)
 			return kind{base: baseStruct, named: named}
 		}
 	}
@@ -186,17 +186,17 @@ func (t *translator) classify(typ types.Type, pos token.Pos) kind {
 			return kind{base: baseInt64}
 		}
 	case *types.Slice:
-		e := t.classify(u.Elem(), pos)
+		e := b.classify(u.Elem(), pos)
 		if e.base != baseInt64 && e.base != baseBool {
 			return kind{base: e.base, depth: e.depth + 1, named: e.named, opaque: e.opaque}
 		}
 	case *types.Array:
-		e := t.classify(u.Elem(), pos)
+		e := b.classify(u.Elem(), pos)
 		if e.base != baseInt64 && e.base != baseBool {
 			return kind{base: e.base, depth: e.depth + 1, named: e.named, opaque: e.opaque}
 		}
 	}
-	t.errf(pos, "unsupported type %s (expected frontend.Variable, integers, structs, or slices/arrays thereof)", typ)
+	b.errf(pos, "unsupported type %s (expected frontend.Variable, integers, structs, or slices/arrays thereof)", typ)
 	return kind{}
 }
 
@@ -204,8 +204,8 @@ func (t *translator) classify(typ types.Type, pos token.Pos) kind {
 // Go name, or false if none is set. Named types and (Go 1.22+) aliases are
 // both recognized; aliases match by their alias name rather than the
 // aliased target.
-func (t *translator) opaqueLeanName(typ types.Type) (string, bool) {
-	if len(t.cfg.OpaqueTypes) == 0 {
+func (b *funcBody) opaqueLeanName(typ types.Type) (string, bool) {
+	if len(b.cfg.OpaqueTypes) == 0 {
 		return "", false
 	}
 	var obj *types.TypeName
@@ -219,7 +219,7 @@ func (t *translator) opaqueLeanName(typ types.Type) (string, bool) {
 		return "", false
 	}
 	fqn := obj.Pkg().Path() + "." + obj.Name()
-	name, ok := t.cfg.OpaqueTypes[fqn]
+	name, ok := b.cfg.OpaqueTypes[fqn]
 	return name, ok
 }
 
@@ -228,16 +228,16 @@ func (t *translator) opaqueLeanName(typ types.Type) (string, bool) {
 // classified recursively via the structRegistry, which reserves the outer
 // struct's name BEFORE running this build callback so inner structs get
 // emitted first (topological order) while outer references resolve.
-func (t *translator) registerStruct(named *types.Named, st *types.Struct, pos token.Pos) {
-	t.emit.structReg.getOrRegister(named, func(name string) string {
+func (b *funcBody) registerStruct(named *types.Named, st *types.Struct, pos token.Pos) {
+	b.emit.structReg.getOrRegister(named, func(name string) string {
 		fieldLines := make([]string, st.NumFields())
 		for i := 0; i < st.NumFields(); i++ {
 			fld := st.Field(i)
 			if fld.Embedded() {
-				t.errf(pos, "embedded fields are not supported (in struct %s)", named.Obj().Name())
+				b.errf(pos, "embedded fields are not supported (in struct %s)", named.Obj().Name())
 			}
-			k := t.classify(fld.Type(), fld.Pos())
-			fieldLines[i] = fmt.Sprintf("  %s : %s", sanitize(fld.Name()), t.leanType(k))
+			k := b.classify(fld.Type(), fld.Pos())
+			fieldLines[i] = fmt.Sprintf("  %s : %s", sanitize(fld.Name()), b.leanType(k))
 		}
 		return fmt.Sprintf("structure %s where\n%s\n  deriving Inhabited", name, strings.Join(fieldLines, "\n"))
 	})
