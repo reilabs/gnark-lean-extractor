@@ -217,6 +217,19 @@ func TestErrretCircuit(t *testing.T) {
 	checkGolden(t, filepath.Join("testdata", "errret", "expected.lean"), out)
 }
 
+// TestBigIntCircuit covers the math/big peepholes and Int64 shift support.
+func TestBigIntCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/bigint",
+		Circuit: "BigInt",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "bigint", "expected.lean"), out)
+}
+
 // TestCompoundLoopCircuit covers `for i := lo; i < hi && <residual>; i++`
 // — the compound condition is lowered to `.takeWhile` on the range list.
 func TestCompoundLoopCircuit(t *testing.T) {

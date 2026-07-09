@@ -17,6 +17,7 @@ type baseKind int8
 const (
 	baseF      baseKind = iota // F — the field element (frontend.Variable)
 	baseInt64                  // Int64 — Go integer, tracked bit-exactly
+	baseBigInt                 // Int — Go math/big.Int (arbitrary-precision)
 	baseBool                   // Bool — Go bool
 	baseStruct                 // a Go named struct; kind.named is set
 	baseOpaque                 // a Config.OpaqueTypes name; kind.opaque is set
@@ -36,6 +37,8 @@ func (b *funcBody) leanType(k kind) string {
 	switch k.base {
 	case baseInt64:
 		return "Int64"
+	case baseBigInt:
+		return "Int"
 	case baseBool:
 		return "Bool"
 	case baseOpaque:
@@ -136,15 +139,12 @@ func (b *funcBody) classify(typ types.Type, pos token.Pos) kind {
 	if isVariable(typ) {
 		return kind{}
 	}
-	// `math/big.Int` at call boundaries in gnark is implicitly coerced to
-	// a Variable — the API methods accept any integer-shaped value. We
-	// mirror that by classifying `big.Int` (and `*big.Int` after the
-	// pointer-erase below) as F.
+	// `math/big.Int` is arbitrary-precision integer. We model it as Lean's Int
 	if named, ok := typ.(*types.Named); ok {
 		obj := named.Obj()
 		if obj != nil && obj.Pkg() != nil &&
 			obj.Pkg().Path() == "math/big" && obj.Name() == "Int" {
-			return kind{}
+			return kind{base: baseBigInt}
 		}
 	}
 	// Pointer types are erased: gnark helpers use `*Struct` to pass value

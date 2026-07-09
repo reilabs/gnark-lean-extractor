@@ -30,10 +30,13 @@ func (b *funcBody) renderConst(v constant.Value, want kind, pos token.Pos) strin
 		b.errf(pos, "unsupported constant %s", v)
 	}
 	s := v.ExactString()
-	if want.base == baseInt64 {
+	switch want.base {
+	case baseInt64:
 		// Bare numerals elaborate against the expected Int64 type;
 		// let-bindings get an explicit ascription instead.
 		return s
+	case baseBigInt:
+		return fmt.Sprintf("(%s : Int)", s)
 	}
 	return fmt.Sprintf("(%s : F)", s)
 }
@@ -68,6 +71,8 @@ func (b *funcBody) zero(k kind, typ types.Type) string {
 		switch k.base {
 		case baseInt64:
 			return "(0 : Int64)"
+		case baseBigInt:
+			return "(0 : Int)"
 		case baseBool:
 			return "false"
 		case baseStruct, baseOpaque:
@@ -115,16 +120,31 @@ func (b *funcBody) atom(e ast.Expr, want kind) string {
 	return wrapParen(str)
 }
 
-// exprTop translates an expression, returning the Lean term and whether
-// it is monadic (`Circuit _`-valued) at the top level. A Go integer
-// expression in a Variable position is a gnark constant: it enters the
-// field through .toInt mod p.
+// exprTop translates e at the wanted kind, returning the Lean term and
+// whether it is monadic. On top of exprBare, it inserts the implicit
+// boundary coercions between the walker's output and the caller's want:
+// Int64 → Int/F via `.toInt`, Int → F via ZMod's IntCast.
 func (b *funcBody) exprTop(e ast.Expr, want kind) (string, bool) {
 	str, monadic := b.exprBare(e, want)
-	if !monadic && want.base != baseInt64 && want.depth == 0 && b.isIntValued(e) {
-		return fmt.Sprintf("((%s).toInt : F)", str), false
+	if monadic || want.depth != 0 {
+		return str, monadic
 	}
-	return str, monadic
+	// Int64-valued expression → the wanted target type.
+	if b.isIntValued(e) {
+		switch want.base {
+		case baseInt64:
+			// no coercion
+		case baseBigInt:
+			return fmt.Sprintf("(%s).toInt", str), false
+		default:
+			return fmt.Sprintf("((%s).toInt : F)", str), false
+		}
+	}
+	// BigInt-classified expression → F wants a coercion.
+	if want.base == baseF && b.kindOf(e).base == baseBigInt {
+		return fmt.Sprintf("((%s) : F)", str), false
+	}
+	return str, false
 }
 
 // exprBare translates a Go expression to Lean, per-shape.
@@ -243,6 +263,10 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 		case token.REM:
 			// Int64 remainder is Go's: sign of the dividend.
 			return fmt.Sprintf("%s %% %s", x, y), false
+		case token.SHL:
+			return fmt.Sprintf("(Int64.shiftLeft (%s : Int64) %s)", x, y), false
+		case token.SHR:
+			return fmt.Sprintf("(Int64.shiftRight (%s : Int64) %s)", x, y), false
 		default:
 			b.errf(e.Pos(), "unsupported integer operator %s", e.Op)
 		}
@@ -380,6 +404,10 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 			b.ensureGadgetAxiom(defineFn, gadgetType.(*types.Named), fn.Name(), e.Pos())
 		}
 		return gadgetStr + ".DefineGadget", true
+	}
+	// math/big specific implementations
+	if str, ok := b.bigIntPeephole(e, fn); ok {
+		return str, false
 	}
 	if leanName, ok := b.cfg.Blackboxes[full]; ok {
 		actual := b.ensureAxiom(leanName, fn, e.Pos())
@@ -602,4 +630,57 @@ func (b *funcBody) structLit(e *ast.CompositeLit, k kind) string {
 		}
 	}
 	return fmt.Sprintf("({ %s : %s })", strings.Join(parts, ", "), typName)
+}
+
+// bigIntPeephole recognizes select math/big function/method calls and emits
+// equivalent Lean Int expressions, bypassing the blackbox path.
+//
+// Handles:
+//   - big.NewInt(x)           → (x : Int)  (or `(x).toInt` for a runtime int64)
+//   - new(big.Int).Lsh(x, n)  → x * 2 ^ n  at Int kind
+//   - new(big.Int).Rsh(x, n)  → x / 2 ^ n  at Int kind
+//
+// Other math/big methods (Cmp, Add, Mul, BitLen, SetBit, …) are not matched.
+func (b *funcBody) bigIntPeephole(e *ast.CallExpr, fn *types.Func) (string, bool) {
+	if fn == nil || fn.Pkg() == nil || fn.Pkg().Path() != "math/big" {
+		return "", false
+	}
+	switch fn.Name() {
+	case "NewInt":
+		if len(e.Args) != 1 {
+			b.errf(e.Pos(), "big.NewInt expects one argument")
+		}
+		return b.atom(e.Args[0], kind{base: baseBigInt}), true
+	case "Lsh", "Rsh":
+		if len(e.Args) != 2 {
+			b.errf(e.Pos(), "big.Int.%s expects two arguments", fn.Name())
+		}
+		sel, ok := unparen(e.Fun).(*ast.SelectorExpr)
+		if !ok {
+			b.errf(e.Pos(), "unexpected big.Int.%s call form", fn.Name())
+		}
+		// Receiver must be `new(big.Int)` — a fresh scratch buffer no
+		// other name reaches. Any other receiver would silently drop
+		// the in-place mutation Lsh / Rsh perform through the pointer.
+		recv, _ := unparen(sel.X).(*ast.CallExpr)
+		var newBi *types.Builtin
+		if recv != nil {
+			if id, ok := unparen(recv.Fun).(*ast.Ident); ok {
+				newBi, _ = b.info.Uses[id].(*types.Builtin)
+			}
+		}
+		if newBi == nil || newBi.Name() != "new" {
+			b.errf(sel.X.Pos(),
+				"big.Int.%s receiver must be `new(big.Int)` — %s mutates the receiver in Go, but the translator drops the mutation, so other receiver shapes would produce silently-wrong constraints",
+				fn.Name(), fn.Name())
+		}
+		x := b.atom(e.Args[0], kind{base: baseBigInt})
+		n := b.natAtom(e.Args[1])
+		op := "*"
+		if fn.Name() == "Rsh" {
+			op = "/"
+		}
+		return fmt.Sprintf("%s %s 2 ^ %s", x, op, n), true
+	}
+	return "", false
 }
