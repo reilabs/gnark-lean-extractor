@@ -29,7 +29,7 @@ type effectSummary struct {
 //  3. enforce  — walk call sites and reject arg/result shapes that would
 //     let Go-visible aliasing survive the translation.
 func (b *funcBody) analyzeEffects(fn *types.Func, body *ast.BlockStmt, paramObjs []types.Object) {
-	info := b.pkg.TypesInfo
+	info := b.info
 	reg := b.emit.funcReg
 	paramIdx := map[types.Object]int{}
 	for i, o := range paramObjs {
@@ -63,7 +63,7 @@ func paramOf(info *types.Info, paramIdx map[types.Object]int, e ast.Expr) int {
 // (per the callee's aliasReturns summary, recursing through nested calls),
 // and whether it may alias something unnamed (a field or slice element).
 func (b *funcBody) resultAliases(call *ast.CallExpr) (map[types.Object]bool, bool) {
-	info := b.pkg.TypesInfo
+	info := b.info
 	fn, _ := b.callee(call).(*types.Func)
 	objs := map[types.Object]bool{}
 	external := false
@@ -169,7 +169,7 @@ func (b *funcBody) computeAliasReturns(fn *types.Func, body *ast.BlockStmt, para
 	if fn == nil {
 		return nil
 	}
-	info := b.pkg.TypesInfo
+	info := b.info
 	sig := fn.Type().(*types.Signature)
 	results, _ := stripTrailingError(sig.Results())
 	if results.Len() != 1 || isEmptyInterface(results.At(0).Type()) ||
@@ -214,7 +214,7 @@ func (b *funcBody) enforceCallSites(
 	rebinds map[*ast.CallExpr]types.Object,
 	returnCalls map[*ast.CallExpr]bool,
 ) {
-	info := b.pkg.TypesInfo
+	info := b.info
 	reg := b.emit.funcReg
 	ast.Inspect(body, func(n ast.Node) bool {
 		call, ok := n.(*ast.CallExpr)

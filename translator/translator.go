@@ -8,9 +8,10 @@
 // definitions, Go for-loops become Lean do-notation `for` loops, and slice
 // lengths stay symbolic, so the output is generic in the input sizes.
 //
-// Calls into packages outside the circuit's own package must be declared as
-// blackboxes: they are emitted as axiomatized opaque predicates rather than
-// translated.
+// Calls into packages outside the circuit's own package must either be listed
+// under Config.WalkPackages — which extends the walk to those import-path
+// prefixes — or declared as blackboxes, in which case they are emitted as
+// axiomatized opaque predicates rather than translated.
 package translator
 
 import (
@@ -41,6 +42,9 @@ type Config struct {
 	// OpaqueTypes maps fully-qualified Go type names ("pkg/path.Type") to
 	// Lean type names.
 	OpaqueTypes map[string]string
+	// WalkPackages lists import-path prefixes of packages the translator
+	// should walk into (in addition to Dir's own package).
+	WalkPackages []string
 }
 
 type translateError struct {
@@ -58,6 +62,12 @@ func (e translateError) Error() string {
 type translator struct {
 	cfg Config
 	pkg *packages.Package
+
+	// pkgs is the walkable-package registry keyed by *types.Package. Contains
+	// the main circuit package plus every dependency whose import path
+	// matches Config.WalkPackages. A callee whose types.Package is in this
+	// map is a candidate for translation; anything else must be blackboxed.
+	pkgs map[*types.Package]*packages.Package
 
 	// emit owns the shared name allocator, per-decl registries, and the
 	// three output sections. Translator methods coordinate the walk;
@@ -97,9 +107,15 @@ func Translate(cfg Config) (out string, err error) {
 		return "", fmt.Errorf("package %s does not compile: %v", pkg.PkgPath, pkg.Errors[0])
 	}
 
+	pkgRegistry, err := collectWalkable(pkg, cfg.WalkPackages)
+	if err != nil {
+		return "", err
+	}
+
 	t := &translator{
 		cfg:  cfg,
 		pkg:  pkg,
+		pkgs: pkgRegistry,
 		emit: newEmitter(),
 	}
 	for _, r := range []string{
@@ -184,11 +200,74 @@ func (t *translator) findDefine() *ast.FuncDecl {
 	panic(translateError{msg: fmt.Sprintf("no Define method found for struct %s in %s", t.cfg.Circuit, t.cfg.Dir)})
 }
 
+// collectWalkable indexes main + every transitive dependency whose import
+// path matches one of the WalkPackages prefixes. Each entry must have Syntax
+// and TypesInfo populated (packages.Load with NeedDeps + NeedSyntax +
+// NeedTypesInfo is expected to populate deps too — bail out clearly if it
+// didn't for a package the caller asked us to walk).
+func collectWalkable(main *packages.Package, prefixes []string) (map[*types.Package]*packages.Package, error) {
+	out := map[*types.Package]*packages.Package{main.Types: main}
+	seen := map[string]bool{main.PkgPath: true}
+	var walk func(p *packages.Package)
+	walk = func(p *packages.Package) {
+		for _, imp := range p.Imports {
+			if seen[imp.PkgPath] {
+				continue
+			}
+			seen[imp.PkgPath] = true
+			if walkableMatch(imp.PkgPath, prefixes) {
+				if imp.Types == nil || imp.Syntax == nil || imp.TypesInfo == nil {
+					// The caller asked us to walk this package but the
+					// loader didn't hand us its syntax/type-info; surface it.
+					continue
+				}
+				out[imp.Types] = imp
+			}
+			walk(imp)
+		}
+	}
+	walk(main)
+	// Verify every requested prefix matched at least one package.
+	for _, pref := range prefixes {
+		matched := false
+		for _, p := range out {
+			if walkableMatch(p.PkgPath, []string{pref}) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return nil, fmt.Errorf("WalkPackages prefix %q did not match any loaded dependency (make sure the main circuit package imports something under it)", pref)
+		}
+	}
+	return out, nil
+}
+
+// walkableMatch reports whether pkgPath is equal to or nested under any of
+// the given prefixes.
+func walkableMatch(pkgPath string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if pkgPath == p || strings.HasPrefix(pkgPath, p+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+// findFuncDecl locates fn's AST across the walkable-package registry. The
+// caller's b.pkg may not be the same as fn.Pkg() (e.g. when a same-package
+// helper calls into a foreign walkable package), so we look up by
+// fn.Pkg() rather than assuming b.pkg.
 func (b *funcBody) findFuncDecl(fn *types.Func) *ast.FuncDecl {
-	for _, file := range b.pkg.Syntax {
+	pkg := b.pkgs[fn.Pkg()]
+	if pkg == nil {
+		return nil
+	}
+	info := pkg.TypesInfo
+	for _, file := range pkg.Syntax {
 		for _, decl := range file.Decls {
 			fd, ok := decl.(*ast.FuncDecl)
-			if ok && b.info.Defs[fd.Name] == fn {
+			if ok && info.Defs[fd.Name] == fn {
 				return fd
 			}
 		}
@@ -201,6 +280,8 @@ func (t *translator) newFuncBody() *funcBody {
 		cfg:     t.cfg,
 		pkg:     t.pkg,
 		info:    t.pkg.TypesInfo,
+		pkgs:    t.pkgs,
+		mainPkg: t.pkg,
 		emit:    t.emit,
 		names:   map[types.Object]string{},
 		muts:    map[types.Object]bool{},
@@ -273,7 +354,7 @@ func (b *funcBody) translateFunc(fn *types.Func, pos token.Pos) string {
 	}
 	fd, sig := b.checkTranslatable(fn, slot, pos)
 
-	c := b.newChild()
+	c := b.newChild(fn.Pkg())
 	recvNamed, binders := c.bindReceiver(fd, fn.Name())
 	paramBinders, paramObjs := c.bindParams(fd)
 	binders = append(binders, paramBinders...)
@@ -293,13 +374,24 @@ func (b *funcBody) translateFunc(fn *types.Func, pos token.Pos) string {
 }
 
 // newChild returns a fresh funcBody sharing b's shared translation state
-// (cfg / pkg / info / emit) with empty per-body scope. Used by translateFunc
-// to walk a callee's body without disturbing the caller's state.
-func (b *funcBody) newChild() *funcBody {
+// (cfg / emit / pkgs / mainPkg) with empty per-body scope. If target is
+// non-nil and differs from b.pkg.Types, pkg / info are swapped to the
+// target package's *packages.Package — the callee walks against its own
+// syntax and type-info. Used by translateFunc to walk a callee's body
+// without disturbing the caller's state.
+func (b *funcBody) newChild(target *types.Package) *funcBody {
+	pkg, info := b.pkg, b.info
+	if target != nil && target != pkg.Types {
+		if p := b.pkgs[target]; p != nil {
+			pkg, info = p, p.TypesInfo
+		}
+	}
 	return &funcBody{
 		cfg:     b.cfg,
-		pkg:     b.pkg,
-		info:    b.info,
+		pkg:     pkg,
+		info:    info,
+		pkgs:    b.pkgs,
+		mainPkg: b.mainPkg,
 		emit:    b.emit,
 		names:   map[types.Object]string{},
 		muts:    map[types.Object]bool{},

@@ -368,13 +368,13 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 			b.errf(e.Pos(), "%s has no DefineGadget method", gadgetType)
 		}
 		gadgetStr := b.atom(gadgetArg, b.classify(gadgetType, e.Pos()))
-		if defineFn.Pkg() != b.pkg.Types {
-			// Foreign gadget: axiomatize DefineGadget with the wrapper's
-			// return kind. The gadget struct itself is already registered
-			// by the classify call above.
-			b.ensureGadgetAxiom(defineFn, gadgetType.(*types.Named), fn.Name(), e.Pos())
-		} else {
+		if _, walkable := b.pkgs[defineFn.Pkg()]; walkable {
 			b.translateFunc(defineFn, e.Pos())
+		} else {
+			// Non-walkable gadget: axiomatize DefineGadget with the
+			// wrapper's return kind. The gadget struct itself is already
+			// registered by the classify call above.
+			b.ensureGadgetAxiom(defineFn, gadgetType.(*types.Named), fn.Name(), e.Pos())
 		}
 		return gadgetStr + ".DefineGadget", true
 	}
@@ -382,7 +382,7 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 		actual := b.ensureAxiom(leanName, fn, e.Pos())
 		return actual + b.callArgs(e, fn), true
 	}
-	if fn.Pkg() == b.pkg.Types {
+	if _, walkable := b.pkgs[fn.Pkg()]; walkable {
 		name := b.translateFunc(fn, e.Pos())
 		// For method calls, emit `<receiver>.<Method> <args>` dot syntax
 		// (the receiver is the SelectorExpr base, not in call.Args).
@@ -527,7 +527,7 @@ func (b *funcBody) gate(name string, call *ast.CallExpr) (string, bool) {
 // demand — nothing is emitted for circuits whose bodies never take the
 // receiver's value.
 func (b *funcBody) synthesizeCircuitLiteral(pos token.Pos) string {
-	obj := b.pkg.Types.Scope().Lookup(b.cfg.Circuit)
+	obj := b.mainPkg.Types.Scope().Lookup(b.cfg.Circuit)
 	if obj == nil {
 		b.errf(pos, "circuit type %s not found", b.cfg.Circuit)
 	}

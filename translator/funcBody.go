@@ -17,10 +17,12 @@ import (
 type funcBody struct {
 	// Shared translation state (immutable per body; copied when spawning
 	// a child).
-	cfg  Config
-	pkg  *packages.Package
-	info *types.Info // == pkg.TypesInfo, cached
-	emit *emitter
+	cfg     Config
+	pkg     *packages.Package
+	info    *types.Info                          // == pkg.TypesInfo, cached
+	pkgs    map[*types.Package]*packages.Package // walkable-package registry
+	mainPkg *packages.Package                    // circuit's own package
+	emit    *emitter
 
 	stmts []stmt // stmts accumulated at the *current* block level
 

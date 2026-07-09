@@ -216,3 +216,56 @@ func TestErrretCircuit(t *testing.T) {
 	}
 	checkGolden(t, filepath.Join("testdata", "errret", "expected.lean"), out)
 }
+
+// TestMultiPackageCircuit exercises Config.WalkPackages: the circuit calls
+// into a foreign subpackage whose function, struct + method, and gadget
+// (via abstractor.Call) are all translated rather than blackboxed.
+func TestMultiPackageCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/multi",
+		Circuit: "Multi",
+		Field:   ecc.BN254,
+		WalkPackages: []string{
+			"github.com/reilabs/gnark-lean-extractor/v3/translator/testdata/multi/helpers",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "multi", "expected.lean"), out)
+}
+
+// TestMultiPackageRejection confirms that without WalkPackages the foreign
+// helper call is still rejected with the standard "register it as a
+// blackbox" error — the boundary hasn't been silently widened.
+func TestMultiPackageRejection(t *testing.T) {
+	_, err := translator.Translate(translator.Config{
+		Dir:     "testdata/multi",
+		Circuit: "Multi",
+		Field:   ecc.BN254,
+	})
+	if err == nil {
+		t.Fatal("expected translation to fail without WalkPackages")
+	}
+	if !strings.Contains(err.Error(), "register it as a blackbox") {
+		t.Errorf("expected foreign-call rejection, got: %v", err)
+	}
+}
+
+// TestMultiPackageBadPrefix verifies that a WalkPackages entry that doesn't
+// match any actually-imported package produces a clear error rather than
+// silently doing nothing.
+func TestMultiPackageBadPrefix(t *testing.T) {
+	_, err := translator.Translate(translator.Config{
+		Dir:          "testdata/multi",
+		Circuit:      "Multi",
+		Field:        ecc.BN254,
+		WalkPackages: []string{"example.com/does-not-exist"},
+	})
+	if err == nil {
+		t.Fatal("expected translation to fail for a non-matching prefix")
+	}
+	if !strings.Contains(err.Error(), "did not match") {
+		t.Errorf("expected unmatched-prefix error, got: %v", err)
+	}
+}
