@@ -217,6 +217,20 @@ func TestErrretCircuit(t *testing.T) {
 	checkGolden(t, filepath.Join("testdata", "errret", "expected.lean"), out)
 }
 
+// TestCompoundLoopCircuit covers `for i := lo; i < hi && <residual>; i++`
+// — the compound condition is lowered to `.takeWhile` on the range list.
+func TestCompoundLoopCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/compound",
+		Circuit: "Compound",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "compound", "expected.lean"), out)
+}
+
 // TestStrideCircuit covers `for i := lo; i < hi; i += k` loops with both a
 // compile-time-constant stride and a runtime stride.
 func TestStrideCircuit(t *testing.T) {

@@ -439,11 +439,13 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 	}
 	id := init.Lhs[0].(*ast.Ident)
 	obj := b.info.Defs[id]
-	cond, ok := s.Cond.(*ast.BinaryExpr)
-	if !ok || cond.Op != token.LSS {
-		b.errf(s.Pos(), "only `i < hi` loop conditions are supported")
+	// Split the loop condition into a primary `i < hi` clause and an
+	// optional residual predicate joined by `&&`.
+	primary, residual := splitLoopCond(s.Cond)
+	if primary == nil {
+		b.errf(s.Pos(), "only `i < hi` (optionally `&& <cond>`) loop conditions are supported")
 	}
-	if cid, ok := unparen(cond.X).(*ast.Ident); !ok || b.info.Uses[cid] != obj {
+	if cid, ok := unparen(primary.X).(*ast.Ident); !ok || b.info.Uses[cid] != obj {
 		b.errf(s.Pos(), "loop condition must test the loop variable")
 	}
 	// Post-clause: `i++` (stride 1) or `i += <expr>` (arbitrary stride).
@@ -469,16 +471,49 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 	default:
 		b.errf(s.Pos(), "only `i++` and `i += k` loop increments are supported")
 	}
-	// Go re-evaluates the bound every iteration; the translation evaluates it
-	// once at loop entry. Reject bodies that reassign what the bound reads.
-	// Element writes are fine: they cannot change a length.
-	b.forbidBodyAssign(s.Body, b.readVars(cond.Y), false,
+	// Go re-evaluates the bound (and takeWhile predicate) every iteration;
+	// the translation captures both at loop entry. Reject bodies that
+	// reassign what either reads. Element writes are fine.
+	boundReads := b.readVars(primary.Y)
+	if residual != nil {
+		for k, v := range b.readVars(residual) {
+			boundReads[k] = v
+		}
+	}
+	b.forbidBodyAssign(s.Body, boundReads, false,
 		"which the loop bound reads — Go re-evaluates the bound every iteration, the translation does not")
 	lo := b.atom(init.Rhs[0], kind{base: baseInt64})
-	hi := b.atom(cond.Y, kind{base: baseInt64})
+	hi := b.atom(primary.Y, kind{base: baseInt64})
 	name := b.bind(obj)
+	// Translate residual now that the loop var is in scope, so idents
+	// referring to it resolve to `name`.
+	var takeWhile string
+	if residual != nil {
+		takeWhile = b.cond(residual)
+	}
 	body := b.collectBlock(s.Body.List, true, nil)
-	b.push(forLoop{name: name, lo: lo, hi: hi, step: step, body: body})
+	b.push(forLoop{name: name, lo: lo, hi: hi, step: step, takeWhile: takeWhile, body: body})
+}
+
+// splitLoopCond peels an `i < hi && <rest>` condition into its `i < hi`
+// primary comparison and the residual predicate, returning (primary, rest).
+// A bare `i < hi` returns (primary, nil). Anything else returns (nil, nil).
+func splitLoopCond(e ast.Expr) (*ast.BinaryExpr, ast.Expr) {
+	be, ok := unparen(e).(*ast.BinaryExpr)
+	if !ok {
+		return nil, nil
+	}
+	if be.Op == token.LSS {
+		return be, nil
+	}
+	if be.Op != token.LAND {
+		return nil, nil
+	}
+	left, ok := unparen(be.X).(*ast.BinaryExpr)
+	if !ok || left.Op != token.LSS {
+		return nil, nil
+	}
+	return left, be.Y
 }
 
 func (b *funcBody) rangeStmt(s *ast.RangeStmt) {

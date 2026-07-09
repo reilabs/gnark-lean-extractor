@@ -100,9 +100,12 @@ type bareExpr struct{ rhs string }
 
 // forLoop — `for <name> in goRange <lo> <hi> do <body>`.
 // If step is non-empty, uses `goRangeStep <lo> <hi> <step>` instead.
+// If takeWhile is non-empty, the range is filtered by
+// `.takeWhile (fun <name> => decide (<takeWhile>))` — used for compound
+// loop conditions of the form `i < hi && <residual>`.
 type forLoop struct {
-	name, lo, hi, step string
-	body               block
+	name, lo, hi, step, takeWhile string
+	body                          block
 }
 
 // forSlice — `for <val> in <xs> do <body>` (range with only the value).
@@ -229,11 +232,17 @@ func renderStmt(s stmt, indent int) []string {
 	case bareExpr:
 		return []string{pad + s.rhs}
 	case forLoop:
-		header := fmt.Sprintf("%sfor %s in goRange %s %s do", pad, s.name, s.lo, s.hi)
+		var rangeExpr string
 		if s.step != "" {
-			header = fmt.Sprintf("%sfor %s in goRangeStep %s %s %s do", pad, s.name, s.lo, s.hi, s.step)
+			rangeExpr = fmt.Sprintf("goRangeStep %s %s %s", s.lo, s.hi, s.step)
+		} else {
+			rangeExpr = fmt.Sprintf("goRange %s %s", s.lo, s.hi)
 		}
-		lines := []string{header}
+		if s.takeWhile != "" {
+			rangeExpr = fmt.Sprintf("((%s).takeWhile (fun %s => decide (%s)))",
+				rangeExpr, s.name, s.takeWhile)
+		}
+		lines := []string{fmt.Sprintf("%sfor %s in %s do", pad, s.name, rangeExpr)}
 		return append(lines, renderBlock(s.body, indent+1)...)
 	case forSlice:
 		lines := []string{fmt.Sprintf("%sfor %s in %s do", pad, s.val, s.xs)}
