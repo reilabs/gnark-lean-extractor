@@ -502,8 +502,10 @@ func (b *funcBody) bindNamedReturns(fd *ast.FuncDecl) {
 		return
 	}
 	var namedReturns []string
+	var namedReturnTypes []types.Type
 	var idx int
 	for _, field := range fd.Type.Results.List {
+		ft := b.info.TypeOf(field.Type)
 		for _, nameId := range field.Names {
 			if nameId.Name == "_" || idx >= len(b.result) {
 				idx++
@@ -514,11 +516,13 @@ func (b *funcBody) bindNamedReturns(fd *ast.FuncDecl) {
 			b.names[obj] = name
 			b.muts[obj] = true
 			namedReturns = append(namedReturns, name)
+			namedReturnTypes = append(namedReturnTypes, ft)
 			idx++
 		}
 	}
 	if len(namedReturns) > 0 {
 		b.namedReturns = namedReturns
+		b.namedReturnTypes = namedReturnTypes
 	}
 }
 
@@ -545,7 +549,11 @@ func (b *funcBody) buildPrologue(fd *ast.FuncDecl) func() {
 		for i, n := range b.namedReturns {
 			zero := "(0 : F)"
 			if i < len(b.result) {
-				zero = b.zero(b.result[i], nil)
+				var typ types.Type
+				if i < len(b.namedReturnTypes) {
+					typ = b.namedReturnTypes[i]
+				}
+				zero = b.zero(b.result[i], typ)
 			}
 			b.push(letBind{name: n, rhs: zero, mut: true})
 		}

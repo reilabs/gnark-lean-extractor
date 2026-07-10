@@ -50,7 +50,8 @@ type funcBody struct {
 	// namedReturns holds the Lean names of Go-side named return values, in
 	// declaration order. When non-nil, a bare `return` yields their
 	// current bindings as a tuple.
-	namedReturns []string
+	namedReturns     []string
+	namedReturnTypes []types.Type
 
 	tmp int
 }

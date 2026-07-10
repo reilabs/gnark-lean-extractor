@@ -308,6 +308,21 @@ func TestPanicCircuit(t *testing.T) {
 	checkGolden(t, filepath.Join("testdata", "panic", "expected.lean"), out)
 }
 
+// TestNamedRetCircuit covers named-return fixed arrays: they must zero-init
+// to `List.replicate N (0 : F)`, not `[]` — otherwise index writes in the
+// body no-op on an empty list.
+func TestNamedRetCircuit(t *testing.T) {
+	out, err := translator.Translate(translator.Config{
+		Dir:     "testdata/namedret",
+		Circuit: "NamedRet",
+		Field:   ecc.BN254,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkGolden(t, filepath.Join("testdata", "namedret", "expected.lean"), out)
+}
+
 // TestMultiPackageCircuit exercises Config.WalkPackages: the circuit calls
 // into a foreign subpackage whose function, struct + method, and gadget
 // (via abstractor.Call) are all translated rather than blackboxed.
