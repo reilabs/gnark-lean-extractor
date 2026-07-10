@@ -1,6 +1,6 @@
 module github.com/reilabs/gnark-lean-extractor/v3
 
-go 1.22.0
+go 1.25.0
 
 require (
 	github.com/consensys/gnark v0.9.2-0.20240322153533-3abde1199375
