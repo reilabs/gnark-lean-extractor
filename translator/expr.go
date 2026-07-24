@@ -240,6 +240,15 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 			elems[i] = b.atom(el, k.elem())
 		}
 		return "[" + strings.Join(elems, ", ") + "]", false
+	case *ast.TypeAssertExpr:
+		if e.Type == nil {
+			b.errf(e.Pos(), "type switch assertions are not supported")
+		}
+		if ak := b.kindOf(e); ak != want {
+			b.errf(e.Pos(), "type assertion to %s does not match the expected translation kind",
+				b.info.TypeOf(e))
+		}
+		return b.exprBare(e.X, want)
 	case *ast.UnaryExpr:
 		// `&x` is Go noise around passing a value struct/slice to a
 		// helper. Erase the pointer op: the translation carries the value
