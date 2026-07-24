@@ -464,8 +464,8 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 		return str, false
 	}
 	// logderivlookup.Table modeled as List F (New / Lookup).
-	if str, ok := b.logderivPeephole(e, fn); ok {
-		return str, false
+	if str, monadic, ok := b.logderivPeephole(e, fn); ok {
+		return str, monadic
 	}
 	if leanName, ok := b.cfg.Blackboxes[full]; ok {
 		// Externally-implemented blackbox: its Lean def is provided by an

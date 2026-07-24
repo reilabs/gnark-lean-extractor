@@ -10,23 +10,21 @@ import (
 // logderivPeephole models logderivlookup.Table operations that appear as
 // expressions — New and Lookup — over the `List F` representation of a table
 // (see isLogderivTable). Insert is a mutation and is handled at statement
-// level (see exprStmt). Returns (lean, handled); results are non-monadic.
+// level (see exprStmt). Returns (lean, monadic, handled).
 //
 //	logderivlookup.New(api)        → ([] : List F)
-//	table.Lookup(i)                → [i].map (fun v => table[v.val]!)
-//	table.Lookup(idxs...)          → idxs.map (fun v => table[v.val]!)
-func (b *funcBody) logderivPeephole(e *ast.CallExpr, fn *types.Func) (string, bool) {
+//	table.Lookup(i)                → Circuit.lookup table [i]
+//	table.Lookup(idxs...)          → Circuit.lookup table idxs
+func (b *funcBody) logderivPeephole(e *ast.CallExpr, fn *types.Func) (string, bool, bool) {
 	switch logderivOp(fn) {
 	case "New":
-		return "([] : List F)", true
+		return "([] : List F)", false, true
 	case "Lookup":
 		sel, ok := unparen(e.Fun).(*ast.SelectorExpr)
 		if !ok {
 			b.errf(e.Pos(), "logderivlookup.Lookup call has no receiver")
 		}
 		table := wrapParen(b.atom(sel.X, kind{base: baseF, depth: 1}))
-		v := fmt.Sprintf("lk_%d", b.tmp)
-		b.tmp++
 		var idxs string
 		if e.Ellipsis.IsValid() {
 			// Spread: the single argument is the index list.
@@ -38,9 +36,9 @@ func (b *funcBody) logderivPeephole(e *ast.CallExpr, fn *types.Func) (string, bo
 			}
 			idxs = "[" + strings.Join(parts, ", ") + "]"
 		}
-		return fmt.Sprintf("%s.map (fun %s => %s[%s.val]!)", idxs, v, table, v), true
+		return fmt.Sprintf("Circuit.lookup %s %s", table, idxs), true, true
 	}
-	return "", false
+	return "", false, false
 }
 
 // emitLogderivInsert translates `table.Insert(v)` as a value-semantic append

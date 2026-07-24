@@ -45,6 +45,10 @@ def Circuit.panic : Circuit Unit := fun _ => False
 def Circuit.get {α : Type} (xs : List α) (i : Nat) : Circuit α :=
   fun k => ∃ h : i < xs.length, k (xs[i]'h)
 
+/-- Table Lookup -/
+def Circuit.lookup (table : List F) (idxs : List F) : Circuit (List F) :=
+  fun k => (∀ v ∈ idxs, v.val < table.length) ∧ k (idxs.map fun v => table[v.val]!)
+
 namespace Gates
 
 def add (a b : F) : F := a + b
