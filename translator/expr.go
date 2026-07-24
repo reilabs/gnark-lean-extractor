@@ -175,20 +175,27 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 			return name, false
 		}
 		// Nested field access: translate the base and append `.Field`.
-		// Field access on an opaque-typed base is refused
-		if b.kindOf(e.X).base == baseOpaque {
+		// Field access on an opaque-typed base is refused, unless the field
+		// is whitelisted in Config.OpaqueProjections
+		if bk := b.kindOf(e.X); bk.base == baseOpaque {
+			field := sel.Obj().Name()
+			if b.cfg.OpaqueProjections[bk.opaque+"."+field] {
+				b.ensureProjection(bk.opaque, field, b.classify(b.info.TypeOf(e), e.Pos()))
+				baseStr := b.atom(e.X, bk)
+				return baseStr + "." + sanitize(field), false
+			}
 			b.errf(e.Pos(),
 				"field access %q on opaque type %s — the opaque type has no fields in Lean; blackbox the enclosing helper",
-				sel.Obj().Name(), b.leanType(b.kindOf(e.X)))
+				field, b.leanType(bk))
 		}
-		baseStr, monadic := b.exprBare(e.X, kind{})
-		if monadic {
-			b.errf(e.Pos(), "cannot select a field of a monadic expression")
-		}
-		return wrapParen(baseStr) + "." + sanitize(sel.Obj().Name()), false
+		// A monadic base (an indexed read, a call) is lifted to a temp first.
+		baseStr := b.atom(e.X, b.kindOf(e.X))
+		return baseStr + "." + sanitize(sel.Obj().Name()), false
 	case *ast.IndexExpr:
+		// Bounds-guarded read: out-of-range indexing makes the circuit
+		// unsatisfiable, matching Go's panic (which builds no circuit).
 		base := b.atom(e.X, b.kindOf(e.X))
-		return fmt.Sprintf("%s[%s]!", base, b.natRaw(e.Index)), false
+		return fmt.Sprintf("Circuit.get %s %s", base, b.natAtom(e.Index)), true
 	case *ast.SliceExpr:
 		if e.Slice3 {
 			b.errf(e.Pos(), "three-index slice expressions are not supported")
@@ -222,7 +229,7 @@ func (b *funcBody) exprBare(e ast.Expr, want kind) (string, bool) {
 				"composite literal of opaque type %s — the opaque type has no fields in Lean; blackbox the enclosing helper",
 				b.leanType(k))
 		}
-		if k.base == baseInt64 || k.depth == 0 {
+		if k.depth == 0 {
 			b.errf(e.Pos(), "unsupported composite literal type")
 		}
 		elems := make([]string, len(e.Elts))
@@ -344,6 +351,20 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 					b.leanType(src), b.leanType(tgt))
 			}
 		}
+		// Conversion between two distinct struct types with identical layout
+		if tgt.base == baseStruct && tgt.depth == 0 {
+			if src := b.kindOf(e.Args[0]); src.base == baseStruct && structKey(src.named) != structKey(tgt.named) {
+				srcAtom := b.atom(e.Args[0], src)
+				st := tgt.named.Underlying().(*types.Struct)
+				parts := make([]string, st.NumFields())
+				for i := 0; i < st.NumFields(); i++ {
+					f := sanitize(st.Field(i).Name())
+					parts[i] = fmt.Sprintf("%s := %s.%s", f, srcAtom, f)
+				}
+				return fmt.Sprintf("({ %s : %s })", strings.Join(parts, ", "),
+					b.emit.structReg.name(tgt.named)), false
+			}
+		}
 		return b.exprTop(e.Args[0], tgt)
 	}
 
@@ -386,7 +407,7 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 
 	// api method calls become gates.
 	if sel, ok := unparen(e.Fun).(*ast.SelectorExpr); ok {
-		if id, ok := unparen(sel.X).(*ast.Ident); ok && b.isAPI(b.info.Uses[id]) {
+		if isAPI(b.info.TypeOf(sel.X)) {
 			return b.gate(sel.Sel.Name, e)
 		}
 	}
@@ -433,8 +454,25 @@ func (b *funcBody) call(e *ast.CallExpr) (string, bool) {
 	if str, ok := b.bigIntPeephole(e, fn); ok {
 		return str, false
 	}
+	// logderivlookup.Table modeled as List F (New / Lookup).
+	if str, ok := b.logderivPeephole(e, fn); ok {
+		return str, false
+	}
 	if leanName, ok := b.cfg.Blackboxes[full]; ok {
-		actual := b.ensureAxiom(leanName, fn, e.Pos())
+		// Externally-implemented blackbox: its Lean def is provided by an
+		// imported base module (resolved via Config.OpenBase), so we emit
+		// the call directly and skip axiomatization.
+		if b.cfg.ExternalDefs[leanName] {
+			b.emit.alloc.reserveExact(leanName)
+			var head string
+			if sig := fn.Type().(*types.Signature); sig.Recv() != nil {
+				if sel, ok := unparen(e.Fun).(*ast.SelectorExpr); ok {
+					head = " " + b.atom(sel.X, b.kindOf(sel.X))
+				}
+			}
+			return leanName + head + b.callArgs(e, fn), true
+		}
+		actual := b.ensureAxiom(leanName, fn, e.Args, e.Pos())
 		// For methods, thread the Go receiver as the axiom's first
 		// positional arg. ensureAxiom mirrors this by prepending a
 		// receiver-typed binder to the axiom's signature. Without this
@@ -485,6 +523,12 @@ func (b *funcBody) callArgs(e *ast.CallExpr, fn *types.Func) string {
 		pt := sig.Params().At(i).Type()
 		if isAPI(pt) {
 			continue
+		}
+		// `interface{}` params carry no structural type — classify the
+		// concrete argument instead (mirrors ensureAxiom's binder handling
+		// for emulated.Field.NewElement(v interface{})).
+		if isEmptyInterface(pt) {
+			pt = b.info.TypeOf(e.Args[i])
 		}
 		out.WriteString(" ")
 		out.WriteString(b.atom(e.Args[i], b.classify(pt, e.Args[i].Pos())))
@@ -644,6 +688,10 @@ func (b *funcBody) structLit(e *ast.CompositeLit, k kind) string {
 		}
 		for i := 0; i < st.NumFields(); i++ {
 			fld := st.Field(i)
+			// API fields are dropped from the Lean structure (see registerStruct).
+			if isAPI(fld.Type()) {
+				continue
+			}
 			fk := b.classify(fld.Type(), e.Pos())
 			var val string
 			if v, ok := supplied[fld.Name()]; ok {
@@ -659,6 +707,9 @@ func (b *funcBody) structLit(e *ast.CompositeLit, k kind) string {
 		}
 		for i, el := range e.Elts {
 			fld := st.Field(i)
+			if isAPI(fld.Type()) {
+				continue
+			}
 			fk := b.classify(fld.Type(), el.Pos())
 			parts = append(parts, fmt.Sprintf("%s := %s", sanitize(fld.Name()), b.atom(el, fk)))
 		}

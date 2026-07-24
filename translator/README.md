@@ -38,7 +38,8 @@ so circuit semantics is ordinary do-notation, with Lean's own `let mut` and
 def circuit (Leaf : F) (Path : List F) (Root : F) : Circuit Unit := do
   let mut h := Leaf
   for i in goRange 0 (Int64.ofNat Path.length) do
-    h ← hash2 h (Path[i.toInt.toNat]!)
+    let t_0 ← Circuit.get Path i.toInt.toNat
+    h ← hash2 h t_0
   Gates.eq h Root
 ```
 
@@ -89,11 +90,15 @@ Not yet supported (translation fails with a position): methods as helpers,
 recursion, multiple return values, early returns, maps, closures, arbitrary
 Go outside the above.
 
-The only semantic divergence is at Go panic points, which Lean totalizes:
-out-of-range indexing yields the default element, division by zero yields 0,
-and `make`/indexing with negative sizes clamp to 0. A Define that panics
-builds no circuit, so every Go execution that constructs a circuit agrees
-with the Lean semantics.
+Out-of-range indexing is bounds-guarded: `xs[i]` translates to the monadic
+`Circuit.get xs i`, whose proposition is `∃ h : i < xs.length, k xs[i]` — an
+index past the end makes the circuit unsatisfiable, exactly where Go panics
+and builds no circuit. (Loop-range element reads, which are in bounds by
+construction, still read directly.) The remaining divergences are at other
+Go panic points, which Lean totalizes: division by zero yields 0, and
+`make`/indexing with negative sizes clamp to 0. A Define that panics builds
+no circuit, so every Go execution that constructs a circuit agrees with the
+Lean semantics.
 
 ## Caveats
 

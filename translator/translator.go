@@ -42,9 +42,26 @@ type Config struct {
 	// OpaqueTypes maps fully-qualified Go type names ("pkg/path.Type") to
 	// Lean type names.
 	OpaqueTypes map[string]string
+	// OpaqueProjections whitelists exported fields of opaque types that may be read
+	OpaqueProjections map[string]bool
 	// WalkPackages lists import-path prefixes of packages the translator
 	// should walk into (in addition to Dir's own package).
 	WalkPackages []string
+
+	// BaseImports lists Lean modules to import at the top of the emitted
+	// file (e.g. "Zolana.Poseidon"). When empty the file is self-contained.
+	BaseImports []string
+	// OpenBase, when non-empty, switches the emitter into shared-prelude
+	// mode: the inline prelude (Order, F, Circuit, Gates, goRange, …) is NOT
+	// emitted — it is assumed to come from an imported base module — and the
+	// file opens this namespace (e.g. "Zolana") so those names resolve.
+	OpenBase string
+	// ExternalDefs names blackbox Lean identifiers whose implementation is
+	// provided by an imported base module rather than axiomatized here.
+	// A blackbox in this set is called directly (resolved via OpenBase)
+	// without emitting an axiom/wrapper. Used for PoseidonHash, which has a
+	// real Lean implementation in the base module.
+	ExternalDefs map[string]bool
 }
 
 type translateError struct {
@@ -145,11 +162,16 @@ func Translate(cfg Config) (out string, err error) {
 	b.WriteString("\n\n")
 	b.WriteString(circuitDef)
 	// When the circuit references an opaque type, wrap the whole body in a
-	// noncomputable section.
+	// noncomputable section. In shared-prelude mode the anchor is the
+	// `open <Base>` line (emitted right after `namespace`); otherwise it is
+	// the `namespace` line itself.
 	if t.emit.opaqueReg.any() {
 		b.WriteString(fmt.Sprintf("\n\nend %s\n", cfg.Namespace))
-		out := strings.Replace(b.String(), "namespace "+cfg.Namespace,
-			"namespace "+cfg.Namespace+"\n\nnoncomputable section", 1)
+		anchor := "namespace " + cfg.Namespace
+		if cfg.OpenBase != "" {
+			anchor = "open " + cfg.OpenBase
+		}
+		out := strings.Replace(b.String(), anchor, anchor+"\n\nnoncomputable section", 1)
 		out = strings.Replace(out, "end "+cfg.Namespace, "end\n\nend "+cfg.Namespace, 1)
 		return out, nil
 	}
@@ -411,9 +433,6 @@ func (b *funcBody) checkTranslatable(fn *types.Func, slot *funcSlot, pos token.P
 		b.errf(pos, "no source for function %s — register it as a blackbox", fn.Name())
 	}
 	sig := fn.Type().(*types.Signature)
-	if sig.Variadic() {
-		b.errf(fd.Pos(), "variadic functions are not supported: %s", fn.Name())
-	}
 	slot.inFlight = true
 	return fd, sig
 }
@@ -449,6 +468,11 @@ func (b *funcBody) bindParams(fd *ast.FuncDecl) ([]string, []types.Object) {
 	var paramObjs []types.Object
 	for _, field := range fd.Type.Params.List {
 		typ := b.info.TypeOf(field.Type)
+		// A variadic parameter `a ...T` has AST type *ast.Ellipsis; its Go
+		// type in the body is the slice []T, which classifies as `List T`.
+		if ell, ok := field.Type.(*ast.Ellipsis); ok {
+			typ = types.NewSlice(b.info.TypeOf(ell.Elt))
+		}
 		for _, nameId := range field.Names {
 			obj := b.info.Defs[nameId]
 			paramObjs = append(paramObjs, obj)
@@ -576,6 +600,19 @@ func (b *funcBody) allocateFuncName(fn *types.Func, recvNamed *types.Named) stri
 }
 
 func (t *translator) prelude() string {
+	// Shared-prelude mode: the prelude decls live in an imported base module.
+	// Emit only imports, the namespace, and the `open` + `variable` lines.
+	if t.cfg.OpenBase != "" {
+		var sb strings.Builder
+		for _, imp := range t.cfg.BaseImports {
+			sb.WriteString("import " + imp + "\n")
+		}
+		sb.WriteString("\nset_option linter.unusedVariables false\n\n")
+		sb.WriteString("namespace " + t.cfg.Namespace + "\n")
+		sb.WriteString("open " + t.cfg.OpenBase + "\n\n")
+		sb.WriteString("variable [Fact (Nat.Prime Order)]")
+		return sb.String()
+	}
 	order := t.cfg.Field.ScalarField()
 	return fmt.Sprintf(`import Mathlib.Data.ZMod.Basic
 import Mathlib.FieldTheory.Finite.Basic
@@ -615,6 +652,12 @@ def Circuit.run {α : Type} (c : Circuit α) : Prop := c fun _ => True
 /-- Marks an unreachable code path — every continuation fails, so any
     circuit that runs through here is unsatisfiable. -/
 def Circuit.panic : Circuit Unit := fun _ => False
+
+/-- Bounds-checked list read: an out-of-range index fails every continuation,
+    so the circuit is unsatisfiable exactly where Go panics (and builds no
+    circuit). -/
+def Circuit.get {α : Type} (xs : List α) (i : Nat) : Circuit α :=
+  fun k => ∃ h : i < xs.length, k (xs[i]'h)
 
 namespace Gates
 

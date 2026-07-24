@@ -37,6 +37,12 @@ def Circuit.run {α : Type} (c : Circuit α) : Prop := c fun _ => True
     circuit that runs through here is unsatisfiable. -/
 def Circuit.panic : Circuit Unit := fun _ => False
 
+/-- Bounds-checked list read: an out-of-range index fails every continuation,
+    so the circuit is unsatisfiable exactly where Go panics (and builds no
+    circuit). -/
+def Circuit.get {α : Type} (xs : List α) (i : Nat) : Circuit α :=
+  fun k => ∃ h : i < xs.length, k (xs[i]'h)
+
 namespace Gates
 
 def add (a b : F) : F := a + b
@@ -66,10 +72,14 @@ end Gates
 def circuit (Src : List F) : Circuit Unit := do
   let mut dst := List.replicate 4 (0 : F)
   dst := Src.take dst.length
-  Gates.eq (dst[0]!) (Src[0]!)
+  let t_0 ← Circuit.get dst 0
+  let t_1 ← Circuit.get Src 0
+  Gates.eq t_0 t_1
   let mut pt := List.replicate 8 (0 : F)
   pt := pt.take 0 ++ Src.take (4 - 0) ++ pt.drop 4
   pt := pt.take 4 ++ Src.take (8 - 4) ++ pt.drop 8
-  Gates.eq (pt[4]!) (Src[0]!)
+  let t_2 ← Circuit.get pt 4
+  let t_3 ← Circuit.get Src 0
+  Gates.eq t_2 t_3
 
 end CopyBuiltin

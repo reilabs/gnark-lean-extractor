@@ -70,6 +70,23 @@ type tupleAssign struct {
 	tmp   string
 	rhs   string
 	parts []tuplePart
+	arity int // tuple width
+	// pure binds the tuple with `:=` instead of `←`
+	pure bool
+}
+
+// tupleProj renders the projection of the ix-th (1-based) element of an
+// n-wide tuple. Lean tuples are right-nested pairs, so element k<n is
+// `tmp.2…(k-1 times).1` and the last element is `tmp.2…(n-1 times)`.
+func tupleProj(tmp string, ix, n int) string {
+	s := tmp
+	for j := 1; j < ix; j++ {
+		s += ".2"
+	}
+	if ix < n {
+		s += ".1"
+	}
+	return s
 }
 
 type tuplePartKind int
@@ -211,16 +228,21 @@ func renderStmt(s stmt, indent int) []string {
 	case tupleLet:
 		return []string{fmt.Sprintf("%slet (%s) ← %s", pad, strings.Join(s.names, ", "), s.rhs)}
 	case tupleAssign:
-		lines := []string{fmt.Sprintf("%slet %s ← %s", pad, s.tmp, s.rhs)}
+		bind := "←"
+		if s.pure {
+			bind = ":="
+		}
+		lines := []string{fmt.Sprintf("%slet %s %s %s", pad, s.tmp, bind, s.rhs)}
 		for _, p := range s.parts {
+			proj := tupleProj(s.tmp, p.tupleIx, s.arity)
 			switch p.kind {
 			case tuplePartLet:
-				lines = append(lines, fmt.Sprintf("%slet %s := %s.%d", pad, p.name, s.tmp, p.tupleIx))
+				lines = append(lines, fmt.Sprintf("%slet %s := %s", pad, p.name, proj))
 			case tuplePartAssign:
-				lines = append(lines, fmt.Sprintf("%s%s := %s.%d", pad, p.name, s.tmp, p.tupleIx))
+				lines = append(lines, fmt.Sprintf("%s%s := %s", pad, p.name, proj))
 			case tuplePartIndex:
-				lines = append(lines, fmt.Sprintf("%s%s := %s.set %s (%s.%d)",
-					pad, p.name, p.name, p.idxExpr, s.tmp, p.tupleIx))
+				lines = append(lines, fmt.Sprintf("%s%s := %s.set %s (%s)",
+					pad, p.name, p.name, p.idxExpr, proj))
 			}
 		}
 		return lines

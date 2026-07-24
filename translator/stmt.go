@@ -109,6 +109,10 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 		b.multiAssign(s, call)
 		return
 	}
+	if len(s.Lhs) > 1 && len(s.Lhs) == len(s.Rhs) {
+		b.parallelAssign(s)
+		return
+	}
 	if len(s.Lhs) != 1 || len(s.Rhs) != 1 {
 		b.errf(s.Pos(), "multi-assignment is not supported")
 	}
@@ -183,9 +187,34 @@ func (b *funcBody) assign(s *ast.AssignStmt) {
 		default:
 			b.errf(s.Pos(), "unsupported assignment target %T", lhs)
 		}
+	case token.ADD_ASSIGN, token.SUB_ASSIGN, token.MUL_ASSIGN, token.QUO_ASSIGN, token.REM_ASSIGN:
+		b.compoundAssign(s)
 	default:
 		b.errf(s.Pos(), "unsupported assignment operator %s", s.Tok)
 	}
+}
+
+// compoundAssign translates `x op= v` (integer +=, -=, *=, /=, %=) on a bound
+// local as `x := x op v`. Used mainly by while-loop counters (`i += 4`).
+func (b *funcBody) compoundAssign(s *ast.AssignStmt) {
+	id, ok := s.Lhs[0].(*ast.Ident)
+	if !ok {
+		b.errf(s.Pos(), "compound assignment is only supported on a bound variable")
+	}
+	obj := b.info.Uses[id]
+	name, ok := b.names[obj]
+	if !ok {
+		b.errf(id.Pos(), "compound assignment to unknown variable %s", id.Name)
+	}
+	if b.classify(obj.Type(), id.Pos()).base != baseInt64 {
+		b.errf(s.Pos(), "compound assignment is only supported on Go integers")
+	}
+	op := map[token.Token]string{
+		token.ADD_ASSIGN: "+", token.SUB_ASSIGN: "-", token.MUL_ASSIGN: "*",
+		token.QUO_ASSIGN: "/", token.REM_ASSIGN: "%",
+	}[s.Tok]
+	rhs := b.atom(s.Rhs[0], kind{base: baseInt64})
+	b.push(reassign{name: name, rhs: fmt.Sprintf("%s %s %s", name, op, rhs)})
 }
 
 // multiAssign translates `x, y := f(...)` (and the `(T, error)` variant
@@ -332,7 +361,7 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 				b.errf(lhs.Pos(), "unsupported multi-assign target %T", lhs)
 			}
 		}
-		b.push(tupleAssign{tmp: tmp, rhs: str, parts: parts})
+		b.push(tupleAssign{tmp: tmp, rhs: str, parts: parts, arity: n})
 		return
 	}
 	names := make([]string, n)
@@ -348,10 +377,42 @@ func (b *funcBody) multiAssign(s *ast.AssignStmt, call *ast.CallExpr) {
 		for i, name := range names {
 			parts[i] = tuplePart{kind: tuplePartAssign, name: name, tupleIx: i + 1}
 		}
-		b.push(tupleAssign{tmp: tmp, rhs: str, parts: parts})
+		b.push(tupleAssign{tmp: tmp, rhs: str, parts: parts, arity: n})
 		return
 	}
 	b.push(tupleLet{names: names, rhs: str})
+}
+
+// parallelAssign translates Go's parallel assignment `a, b, … = x, y, …`
+func (b *funcBody) parallelAssign(s *ast.AssignStmt) {
+	n := len(s.Lhs)
+	rhsStrs := make([]string, n)
+	for i := range s.Lhs {
+		k := b.kindOf(s.Lhs[i])
+		rhsStrs[i] = b.atom(s.Rhs[i], k)
+	}
+	tmp := fmt.Sprintf("t_%d", b.tmp)
+	b.tmp++
+	parts := make([]tuplePart, 0, n)
+	for i, lhs := range s.Lhs {
+		id, ok := lhs.(*ast.Ident)
+		if !ok {
+			b.errf(lhs.Pos(), "parallel-assignment targets must be identifiers")
+		}
+		if id.Name == "_" {
+			continue
+		}
+		if s.Tok == token.DEFINE {
+			parts = append(parts, tuplePart{kind: tuplePartLet, name: b.bind(b.info.Defs[id]), tupleIx: i + 1})
+			continue
+		}
+		name, ok := b.names[b.info.Uses[id]]
+		if !ok {
+			b.errf(id.Pos(), "assignment to unknown variable %s", id.Name)
+		}
+		parts = append(parts, tuplePart{kind: tuplePartAssign, name: name, tupleIx: i + 1})
+	}
+	b.push(tupleAssign{tmp: tmp, rhs: "(" + strings.Join(rhsStrs, ", ") + ")", parts: parts, arity: n, pure: true})
 }
 
 // discard translates `_ = e` / `_ := e`.
@@ -371,6 +432,11 @@ func (b *funcBody) exprStmt(s *ast.ExprStmt) {
 			b.emitCopy(call)
 			return
 		}
+	}
+	// `table.Insert(v)`: append to the List F modeling the lookup table.
+	if fn, ok := b.callee(call).(*types.Func); ok && logderivOp(fn) == "Insert" {
+		b.emitLogderivInsert(call)
+		return
 	}
 	str, monadic := b.discardExpr(call)
 	switch {
@@ -452,6 +518,12 @@ func (b *funcBody) callIsUnit(call *ast.CallExpr) bool {
 }
 
 func (b *funcBody) forStmt(s *ast.ForStmt) {
+	// C-style while loop: `for cond { … }` (no init/post). The counter is an
+	// ordinary mutable local the body advances; see whileStmt.
+	if s.Init == nil && s.Post == nil && s.Cond != nil {
+		b.whileStmt(s)
+		return
+	}
 	init, ok := s.Init.(*ast.AssignStmt)
 	if !ok || init.Tok != token.DEFINE || len(init.Lhs) != 1 {
 		b.errf(s.Pos(), "only `for i := lo; i < hi; i++` or `i += k` loops are supported")
@@ -512,6 +584,83 @@ func (b *funcBody) forStmt(s *ast.ForStmt) {
 	}
 	body := b.collectBlock(s.Body.List, true, nil)
 	b.push(forLoop{name: name, lo: lo, hi: hi, step: step, takeWhile: takeWhile, body: body})
+}
+
+// whileStmt translates a C-style `for i < hi { … }` loop whose body advances
+// the counter `i` by a fixed stride (`i += k` / `i++`).
+func (b *funcBody) whileStmt(s *ast.ForStmt) {
+	primary, residual := splitLoopCond(s.Cond)
+	if primary == nil {
+		b.errf(s.Pos(), "while loops must have condition `i < hi`")
+	}
+	if residual != nil {
+		b.errf(s.Pos(), "compound while-loop conditions are not supported")
+	}
+	cid, ok := unparen(primary.X).(*ast.Ident)
+	if !ok {
+		b.errf(s.Pos(), "while condition must test a counter variable")
+	}
+	counter := b.info.Uses[cid]
+	if _, ok := b.names[counter]; !ok {
+		b.errf(cid.Pos(), "while counter %s is not a bound local", cid.Name)
+	}
+	step, ok := b.whileStride(s.Body, counter)
+	if !ok {
+		b.errf(s.Pos(),
+			"unsupported while loop: the body must advance %s by exactly one `%s += k` (or `%s++`)",
+			cid.Name, cid.Name, cid.Name)
+	}
+	// The bound is captured once at loop entry; reject bodies that reassign
+	// what it reads (the counter itself is expected to advance, so exclude it).
+	boundReads := b.readVars(primary.Y)
+	delete(boundReads, counter)
+	b.forbidBodyAssign(s.Body, boundReads, false,
+		"which the loop bound reads — Go re-evaluates the bound every iteration, the translation captures it once")
+	lo := b.atom(cid, kind{base: baseInt64})
+	hi := b.atom(primary.Y, kind{base: baseInt64})
+	body := b.collectBlock(s.Body.List, true, nil)
+	b.push(forLoop{name: "_", lo: lo, hi: hi, step: step, body: body})
+}
+
+// whileStride finds the counter's advance in a while-loop body
+func (b *funcBody) whileStride(body *ast.BlockStmt, counter types.Object) (string, bool) {
+	isCounter := func(e ast.Expr) bool {
+		id, ok := unparen(e).(*ast.Ident)
+		return ok && b.info.Uses[id] == counter
+	}
+	var incr ast.Node
+	count := 0
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.IncDecStmt:
+			if isCounter(n.X) {
+				count++
+				incr = n
+			}
+		case *ast.AssignStmt:
+			for _, l := range n.Lhs {
+				if isCounter(l) {
+					count++
+					incr = n
+				}
+			}
+		}
+		return true
+	})
+	if count != 1 {
+		return "", false
+	}
+	switch n := incr.(type) {
+	case *ast.IncDecStmt:
+		if n.Tok == token.INC {
+			return "1", true
+		}
+	case *ast.AssignStmt:
+		if n.Tok == token.ADD_ASSIGN && len(n.Lhs) == 1 {
+			return b.atom(n.Rhs[0], kind{base: baseInt64}), true
+		}
+	}
+	return "", false
 }
 
 // splitLoopCond peels an `i < hi && <rest>` condition into its `i < hi`

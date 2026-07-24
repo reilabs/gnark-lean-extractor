@@ -36,11 +36,11 @@ func (b *funcBody) leanType(k kind) string {
 	var s string
 	switch k.base {
 	case baseInt64:
-		return "Int64"
+		s = "Int64"
 	case baseBigInt:
-		return "Int"
+		s = "Int"
 	case baseBool:
-		return "Bool"
+		s = "Bool"
 	case baseOpaque:
 		s = k.opaque
 	case baseStruct:
@@ -84,6 +84,35 @@ func gnarkNamed(typ types.Type, name string) bool {
 
 func isVariable(typ types.Type) bool { return gnarkNamed(typ, "Variable") }
 func isAPI(typ types.Type) bool      { return gnarkNamed(typ, "API") }
+
+// isLogderivTable reports whether typ is (a pointer to) logderivlookup.Table.
+func isLogderivTable(typ types.Type) bool {
+	if p, ok := typ.(*types.Pointer); ok {
+		typ = p.Elem()
+	}
+	named, ok := typ.(*types.Named)
+	if !ok {
+		return false
+	}
+	obj := named.Obj()
+	return obj != nil && obj.Pkg() != nil &&
+		obj.Pkg().Path() == "github.com/consensys/gnark/std/lookup/logderivlookup" &&
+		obj.Name() == "Table"
+}
+
+// logderivOp classifies a call to a logderivlookup.Table method/constructor,
+// returning "New" | "Insert" | "Lookup" (or "" for anything else).
+func logderivOp(fn *types.Func) string {
+	if fn == nil || fn.Pkg() == nil ||
+		fn.Pkg().Path() != "github.com/consensys/gnark/std/lookup/logderivlookup" {
+		return ""
+	}
+	switch fn.Name() {
+	case "New", "Insert", "Lookup":
+		return fn.Name()
+	}
+	return ""
+}
 
 // isError reports whether typ is the builtin `error` interface.
 func isError(typ types.Type) bool {
@@ -147,6 +176,10 @@ func (b *funcBody) classify(typ types.Type, pos token.Pos) kind {
 			return kind{base: baseBigInt}
 		}
 	}
+	// logderivlookup.Table is modeled as a plain `List F` (its entries).
+	if isLogderivTable(typ) {
+		return kind{base: baseF, depth: 1}
+	}
 	// Pointer types are erased: gnark helpers use `*Struct` to pass value
 	// records by reference, but the translation is value-semantic, so
 	// `*T` classifies as `T`.
@@ -187,12 +220,14 @@ func (b *funcBody) classify(typ types.Type, pos token.Pos) kind {
 		}
 	case *types.Slice:
 		e := b.classify(u.Elem(), pos)
-		if e.base != baseInt64 && e.base != baseBool {
+		// Slices of Go bool have no value model; slices of everything else
+		// (F, Int64 index tables like AES's byteOrder, structs, opaques) do.
+		if e.base != baseBool {
 			return kind{base: e.base, depth: e.depth + 1, named: e.named, opaque: e.opaque}
 		}
 	case *types.Array:
 		e := b.classify(u.Elem(), pos)
-		if e.base != baseInt64 && e.base != baseBool {
+		if e.base != baseBool {
 			return kind{base: e.base, depth: e.depth + 1, named: e.named, opaque: e.opaque}
 		}
 	}
@@ -230,14 +265,20 @@ func (b *funcBody) opaqueLeanName(typ types.Type) (string, bool) {
 // emitted first (topological order) while outer references resolve.
 func (b *funcBody) registerStruct(named *types.Named, st *types.Struct, pos token.Pos) {
 	b.emit.structReg.getOrRegister(named, func(name string) string {
-		fieldLines := make([]string, st.NumFields())
+		var fieldLines []string
 		for i := 0; i < st.NumFields(); i++ {
 			fld := st.Field(i)
 			if fld.Embedded() {
 				b.errf(pos, "embedded fields are not supported (in struct %s)", named.Obj().Name())
 			}
+			// frontend.API fields are ambient (the gates), not values —
+			// gadgets that stash the API in their state drop that field; the
+			// gate path reaches it through the receiver instead.
+			if isAPI(fld.Type()) {
+				continue
+			}
 			k := b.classify(fld.Type(), fld.Pos())
-			fieldLines[i] = fmt.Sprintf("  %s : %s", sanitize(fld.Name()), b.leanType(k))
+			fieldLines = append(fieldLines, fmt.Sprintf("  %s : %s", sanitize(fld.Name()), b.leanType(k)))
 		}
 		return fmt.Sprintf("structure %s where\n%s\n  deriving Inhabited", name, strings.Join(fieldLines, "\n"))
 	})

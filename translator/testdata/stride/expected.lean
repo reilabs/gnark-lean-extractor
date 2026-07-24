@@ -37,6 +37,12 @@ def Circuit.run {α : Type} (c : Circuit α) : Prop := c fun _ => True
     circuit that runs through here is unsatisfiable. -/
 def Circuit.panic : Circuit Unit := fun _ => False
 
+/-- Bounds-checked list read: an out-of-range index fails every continuation,
+    so the circuit is unsatisfiable exactly where Go panics (and builds no
+    circuit). -/
+def Circuit.get {α : Type} (xs : List α) (i : Nat) : Circuit α :=
+  fun k => ∃ h : i < xs.length, k (xs[i]'h)
+
 namespace Gates
 
 def add (a b : F) : F := a + b
@@ -66,10 +72,12 @@ end Gates
 def circuit (Xs : List F) (Step : Int64) (R : F) : Circuit Unit := do
   let mut sumEven := (0 : F)
   for i in goRangeStep 0 (Int64.ofNat Xs.length) 2 do
-    sumEven := Gates.add sumEven (Xs[i.toInt.toNat]!)
+    let t_0 ← Circuit.get Xs i.toInt.toNat
+    sumEven := Gates.add sumEven t_0
   let mut sumStride := (0 : F)
   for i in goRangeStep 0 (Int64.ofNat Xs.length) Step do
-    sumStride := Gates.add sumStride (Xs[i.toInt.toNat]!)
+    let t_1 ← Circuit.get Xs i.toInt.toNat
+    sumStride := Gates.add sumStride t_1
   Gates.eq (Gates.add sumEven sumStride) R
 
 end Stride

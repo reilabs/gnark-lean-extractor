@@ -37,6 +37,12 @@ def Circuit.run {α : Type} (c : Circuit α) : Prop := c fun _ => True
     circuit that runs through here is unsatisfiable. -/
 def Circuit.panic : Circuit Unit := fun _ => False
 
+/-- Bounds-checked list read: an out-of-range index fails every continuation,
+    so the circuit is unsatisfiable exactly where Go panics (and builds no
+    circuit). -/
+def Circuit.get {α : Type} (xs : List α) (i : Nat) : Circuit α :=
+  fun k => ∃ h : i < xs.length, k (xs[i]'h)
+
 namespace Gates
 
 def add (a b : F) : F := a + b
@@ -68,7 +74,11 @@ def circuit (Xs : List F) : Circuit Unit := do
   let head := Xs.take 3
   let tail := Xs.drop 5
   let mid := (Xs.drop 2).take (6 - 2)
-  Gates.eq (all[0]!) (head[0]!)
-  Gates.eq (tail[0]!) (mid[3]!)
+  let t_0 ← Circuit.get all 0
+  let t_1 ← Circuit.get head 0
+  Gates.eq t_0 t_1
+  let t_2 ← Circuit.get tail 0
+  let t_3 ← Circuit.get mid 3
+  Gates.eq t_2 t_3
 
 end SliceExpr

@@ -37,6 +37,12 @@ def Circuit.run {α : Type} (c : Circuit α) : Prop := c fun _ => True
     circuit that runs through here is unsatisfiable. -/
 def Circuit.panic : Circuit Unit := fun _ => False
 
+/-- Bounds-checked list read: an out-of-range index fails every continuation,
+    so the circuit is unsatisfiable exactly where Go panics (and builds no
+    circuit). -/
+def Circuit.get {α : Type} (xs : List α) (i : Nat) : Circuit α :=
+  fun k => ∃ h : i < xs.length, k (xs[i]'h)
+
 namespace Gates
 
 def add (a b : F) : F := a + b
@@ -73,7 +79,8 @@ def mix (state : List F) : Circuit (List F) := do
   for i in goRange 0 (Int64.ofNat state.length) do
     let mut acc := (0 : F)
     for j in goRange 0 (Int64.ofNat state.length) do
-      acc := Gates.add acc (Gates.mul (state[j.toInt.toNat]!) (((i + (2 * j)) + 1).toInt : F))
+      let t_0 ← Circuit.get state j.toInt.toNat
+      acc := Gates.add acc (Gates.mul t_0 (((i + (2 * j)) + 1).toInt : F))
     out_ := out_.set i.toInt.toNat acc
   return out_
 
@@ -81,28 +88,34 @@ def permute (state : List F) : Circuit (List F) := do
   let mut state := state
   for r in goRange 0 64 do
     for j in goRange 0 (Int64.ofNat state.length) do
-      state := state.set j.toInt.toNat (Gates.add (state[j.toInt.toNat]!) ((((r * (Int64.ofNat state.length)) + j) + 1).toInt : F))
+      let t_0 ← Circuit.get state j.toInt.toNat
+      state := state.set j.toInt.toNat (Gates.add t_0 ((((r * (Int64.ofNat state.length)) + j) + 1).toInt : F))
     if (r < 4 ∨ 60 ≤ r) then
       for j in goRange 0 (Int64.ofNat state.length) do
-        let t_0 ← sbox (state[j.toInt.toNat]!)
-        state := state.set j.toInt.toNat t_0
+        let t_1 ← Circuit.get state j.toInt.toNat
+        let t_2 ← sbox t_1
+        state := state.set j.toInt.toNat t_2
     else
-      let t_1 ← sbox (state[0]!)
-      state := state.set 0 t_1
+      let t_3 ← Circuit.get state 0
+      let t_4 ← sbox t_3
+      state := state.set 0 t_4
     state ← mix state
   return state
 
 def hash2 (l : F) (r : F) : Circuit F := do
   let mut state := [(0 : F), l, r]
   state ← permute state
-  return state[0]!
+  Circuit.get state 0
 
 def circuit (Root : F) (Element : F) (Path : List F) (Proof : List F) : Circuit Unit := do
   let mut current := Element
   for i in goRange 0 (Int64.ofNat Proof.length) do
-    let left ← hash2 current (Proof[i.toInt.toNat]!)
-    let right ← hash2 (Proof[i.toInt.toNat]!) current
-    current := Gates.select (Path[i.toInt.toNat]!) right left
+    let t_0 ← Circuit.get Proof i.toInt.toNat
+    let left ← hash2 current t_0
+    let t_1 ← Circuit.get Proof i.toInt.toNat
+    let right ← hash2 t_1 current
+    let t_2 ← Circuit.get Path i.toInt.toNat
+    current := Gates.select t_2 right left
   Gates.eq current Root
 
 end MerkleRecover

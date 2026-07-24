@@ -12,6 +12,10 @@ type emitter struct {
 	pkgVarReg *pkgVarRegistry
 	funcReg   *funcRegistry
 
+	// projSeen dedupes emitted opaque-field projection axioms
+	// (Config.OpaqueProjections), keyed by "<OpaqueLeanName>.<Field>".
+	projSeen map[string]bool
+
 	// Three output sections, in the order they appear in the emitted Lean
 	// file. Registries append into these through emit callbacks wired at
 	// construction.
@@ -22,8 +26,9 @@ type emitter struct {
 
 func newEmitter() *emitter {
 	e := &emitter{
-		alloc:   newNameAlloc(),
-		funcReg: newFuncRegistry(),
+		alloc:    newNameAlloc(),
+		funcReg:  newFuncRegistry(),
+		projSeen: map[string]bool{},
 	}
 	pushStruct := func(d string) { e.structs = append(e.structs, d) }
 	pushAxiom := func(d string) { e.axioms = append(e.axioms, d) }

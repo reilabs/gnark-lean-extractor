@@ -2,6 +2,7 @@ package translator
 
 import (
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
 	"strings"
@@ -53,10 +54,26 @@ func (b *funcBody) ensureGadgetAxiom(defineFn *types.Func, gadgetType *types.Nam
 	b.emit.axioms = append(b.emit.axioms, axiom+"\n"+def)
 }
 
+// ensureProjection emits, once per (opaque type, field), an axiomatized
+// accessor `axiom <Opaque>.<Field> : <Opaque> → <resultType>`. Lean resolves
+// `base.Field` to this axiom via dot-notation, so the opaque type gains a
+// single read-only structural window (Config.OpaqueProjections).
+func (b *funcBody) ensureProjection(opaque, field string, result kind) {
+	key := opaque + "." + field
+	if b.emit.projSeen[key] {
+		return
+	}
+	b.emit.projSeen[key] = true
+	name := opaque + "." + sanitize(field)
+	b.emit.alloc.reserveExact(name)
+	b.emit.axioms = append(b.emit.axioms,
+		fmt.Sprintf("axiom %s : %s → %s", name, opaque, b.leanType(result)))
+}
+
 // ensureAxiom emits an axiom + wrapper for a blackboxed function. Returns
 // the emitted Lean name — which may differ from the requested one if a
 // collision (e.g. with the outer namespace) forced a suffix.
-func (b *funcBody) ensureAxiom(leanName string, fn *types.Func, pos token.Pos) string {
+func (b *funcBody) ensureAxiom(leanName string, fn *types.Func, args []ast.Expr, pos token.Pos) string {
 	return b.emit.axiomReg.getOrRegister(leanName, func(actual string) string {
 		// Also reserve the companion predicate name so it can't be shadowed.
 		b.emit.alloc.reserveExact(actual + "_pred")
@@ -82,7 +99,12 @@ func (b *funcBody) ensureAxiom(leanName string, fn *types.Func, pos token.Pos) s
 			if isAPI(p.Type()) {
 				continue
 			}
-			k := b.classify(p.Type(), pos)
+			//  Recover empty interface types from the argument passed
+			pt := p.Type()
+			if isEmptyInterface(pt) && i < len(args) {
+				pt = b.info.TypeOf(args[i])
+			}
+			k := b.classify(pt, pos)
 			name := sanitize(p.Name())
 			if name == "" || name == "_" {
 				name = fmt.Sprintf("x%d", i)

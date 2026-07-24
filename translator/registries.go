@@ -78,21 +78,26 @@ func (r *funcRegistry) summary(fn *types.Func) effectSummary {
 // self-reference; its return value is the full `structure … deriving …`
 // decl text.
 type structRegistry struct {
-	names map[*types.Named]string
+	names map[string]string
 	alloc *nameAlloc
 	emit  func(decl string)
 }
 
 func newStructRegistry(alloc *nameAlloc, emit func(decl string)) *structRegistry {
-	return &structRegistry{names: map[*types.Named]string{}, alloc: alloc, emit: emit}
+	return &structRegistry{names: map[string]string{}, alloc: alloc, emit: emit}
 }
 
+// structKey is the canonical identity of a named type, stable across the
+// distinct *types.Named instances go/types mints for one generic instantiation.
+func structKey(n *types.Named) string { return types.TypeString(n, nil) }
+
 func (r *structRegistry) getOrRegister(n *types.Named, build func(leanName string) string) string {
-	if name, ok := r.names[n]; ok {
+	key := structKey(n)
+	if name, ok := r.names[key]; ok {
 		return name
 	}
 	name := r.alloc.fresh(n.Obj().Name())
-	r.names[n] = name
+	r.names[key] = name
 	r.emit(build(name))
 	return name
 }
@@ -100,7 +105,7 @@ func (r *structRegistry) getOrRegister(n *types.Named, build func(leanName strin
 // name returns the already-registered Lean name for n, or "" if not yet
 // registered. Used by ensureGadgetAxiom to look up a gadget's struct name
 // without triggering registration.
-func (r *structRegistry) name(n *types.Named) string { return r.names[n] }
+func (r *structRegistry) name(n *types.Named) string { return r.names[structKey(n)] }
 
 // opaqueRegistry emits `axiom X : Type` + companion Inhabited for opaque
 // types declared via Config.OpaqueTypes. Decls share the "structs" output

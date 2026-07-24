@@ -37,6 +37,12 @@ def Circuit.run {α : Type} (c : Circuit α) : Prop := c fun _ => True
     circuit that runs through here is unsatisfiable. -/
 def Circuit.panic : Circuit Unit := fun _ => False
 
+/-- Bounds-checked list read: an out-of-range index fails every continuation,
+    so the circuit is unsatisfiable exactly where Go panics (and builds no
+    circuit). -/
+def Circuit.get {α : Type} (xs : List α) (i : Nat) : Circuit α :=
+  fun k => ∃ h : i < xs.length, k (xs[i]'h)
+
 namespace Gates
 
 def add (a b : F) : F := a + b
@@ -74,8 +80,10 @@ def hash2 (a : F) (b : F) : Circuit F := do
 def circuit (Leaf : F) (Path : List F) (Root : F) : Circuit Unit := do
   let mut h := Leaf
   for i in goRange 0 (Int64.ofNat Path.length) do
-    h ← hash2 h (Path[i.toInt.toNat]!)
-    h ← MiMC h (Path[i.toInt.toNat]!)
+    let t_0 ← Circuit.get Path i.toInt.toNat
+    h ← hash2 h t_0
+    let t_1 ← Circuit.get Path i.toInt.toNat
+    h ← MiMC h t_1
   let sum := Gates.add h (1 : F)
   Gates.eq sum Root
 

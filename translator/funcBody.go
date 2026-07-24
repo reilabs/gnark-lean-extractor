@@ -127,6 +127,12 @@ func (b *funcBody) scanMut(body *ast.BlockStmt) {
 					}
 				}
 			}
+			// `table.Insert(v)` rebinds the table (modeled as List F append).
+			if fn, ok := b.callee(n).(*types.Func); ok && logderivOp(fn) == "Insert" {
+				if sel, ok := unparen(n.Fun).(*ast.SelectorExpr); ok {
+					markIdent(sel.X)
+				}
+			}
 		}
 		return true
 	})
